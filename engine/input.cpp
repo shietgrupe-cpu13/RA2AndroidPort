@@ -40,7 +40,7 @@ static int sel_engineer_idx(const World& world, const Selection& sel) {
     for (int i : sel.ids()) {
         if (i >= static_cast<int>(world.units().size())) break;
         const Unit& u = world.units()[i];
-        if (!u.alive || u.die_time >= 0.0 || u.cargo_of >= 0 || !world.controllable(u.house)) continue;
+        if (!u.alive || u.die_time >= 0.0 || u.cargo_of >= 0 || !world.controllable_unit(i)) continue;
         if (world.unit_is_engineer(u)) return i;
     }
     return -1;
@@ -383,7 +383,7 @@ void Input::commit_click(int px, int py, bool shift) {
     // unit is treated exactly like a pick on empty ground (falls through to
     // the clear-selection branch below).
     int idx = unit_under(px, py);
-    if (idx >= 0 && !world_.controllable(world_.units()[idx].house)) idx = -1;
+    if (idx >= 0 && !world_.controllable_unit(idx)) idx = -1;
     if (idx >= 0) {
         if (shift) {
             sel_.toggle(idx);  // toggle
@@ -401,8 +401,11 @@ void Input::commit_click(int px, int py, bool shift) {
 bool Input::box_has_own_unit() const {
     const int x0 = std::min(down_x_, cur_x_), x1 = std::max(down_x_, cur_x_);
     const int y0 = std::min(down_y_, cur_y_), y1 = std::max(down_y_, cur_y_);
-    for (const Unit& u : world_.units()) {
-        if (!world_.controllable(u.house) || !u.alive || u.die_time >= 0.0 || u.cargo_of >= 0) continue;
+    const auto& units = world_.units();
+    for (std::size_t i = 0; i < units.size(); ++i) {
+        const Unit& u = units[i];
+        if (!world_.controllable_unit(static_cast<int>(i)) ||
+            !u.alive || u.die_time >= 0.0 || u.cargo_of >= 0) continue;
         int gx, gy;
         unit_ground_px(u, gx, gy);
         if (gx >= x0 && gx <= x1 && gy >= y0 && gy <= y1) return true;
@@ -421,7 +424,8 @@ void Input::commit_box(bool shift) {
         // house != 0, dead/dying, and cargo_of >= 0 (aboard a transport,
         // off-map [CB-1]) are skipped even if their ground point falls
         // inside the dragged rectangle.
-        if (!world_.controllable(u.house) || !u.alive || u.die_time >= 0.0 || u.cargo_of >= 0) continue;
+        if (!world_.controllable_unit(static_cast<int>(i)) ||
+            !u.alive || u.die_time >= 0.0 || u.cargo_of >= 0) continue;
         int gx, gy;
         unit_ground_px(u, gx, gy);
         if (gx >= x0 && gx <= x1 && gy >= y0 && gy <= y1) sel_.set(static_cast<int>(i));
@@ -434,7 +438,7 @@ void Input::commit_double(int px, int py) {
     // Same house-0-only rule as commit_click: a double-click landing on a
     // hostile does nothing (no type-select, no selection change).
     const int idx = unit_under(px, py);
-    if (idx < 0 || !world_.controllable(world_.units()[idx].house)) return;
+    if (idx < 0 || !world_.controllable_unit(idx)) return;
     const std::string type = world_.units()[idx].image;
     sel_.clear();
     for (std::size_t i = 0; i < world_.units().size(); ++i) {
@@ -443,7 +447,7 @@ void Input::commit_double(int px, int py) {
         // CARRIED units (a hostile, a dead unit, or one aboard a transport
         // (cargo_of >= 0 [CB-1]) sharing the clicked unit's image must never
         // join the selection).
-        if (!world_.controllable(u.house) || u.image != type || !u.alive || u.die_time >= 0.0 ||
+        if (!world_.controllable_unit(static_cast<int>(i)) || u.image != type || !u.alive || u.die_time >= 0.0 ||
             u.cargo_of >= 0)
             continue;
         int gx, gy;
@@ -559,7 +563,7 @@ void Input::issue_order(int px, int py) {
         for (int si : sel) {
             if (si >= static_cast<int>(world_.units().size())) break;
             const Unit& su = world_.units()[si];
-            if (su.is_harvester && world_.controllable(su.house) && su.alive && su.die_time < 0.0) {
+            if (su.is_harvester && world_.controllable_unit(si) && su.alive && su.die_time < 0.0) {
                 harv_selected = true;
                 break;
             }
@@ -583,7 +587,7 @@ void Input::issue_order(int px, int py) {
                 // validity skip, the fourth carry-guard site.
                 if (!su.alive || su.die_time >= 0.0 || su.cargo_of >= 0)
                     continue;
-                if (su.is_harvester && world_.controllable(su.house))
+                if (su.is_harvester && world_.controllable_unit(i))
                     harv_idx.push_back(i);
                 else
                     others.push_back(i);
@@ -650,7 +654,7 @@ void Input::issue_order(int px, int py) {
             for (int si : sel) {
                 if (si >= static_cast<int>(world_.units().size())) break;
                 const Unit& su = world_.units()[si];
-                if (!world_.controllable(su.house) || !su.alive || su.die_time >= 0.0 || si == idx)
+                if (!world_.controllable_unit(si) || !su.alive || su.die_time >= 0.0 || si == idx)
                     continue;
                 if (su.passengers_max > 0) continue;  // transports
                 eligible = true;                      // do not ride
@@ -719,7 +723,7 @@ void Input::issue_order(int px, int py) {
             for (int i : sel) {
                 if (i < 0 || i >= static_cast<int>(world_.units().size())) continue;
                 const Unit& su = world_.units()[i];
-                if (!su.alive || su.die_time >= 0.0 || su.cargo_of >= 0 || !world_.controllable(su.house)) continue;
+                if (!su.alive || su.die_time >= 0.0 || su.cargo_of >= 0 || !world_.controllable_unit(i)) continue;
                 if (world_.unit_is_spy(su) && world_.spy_can_infiltrate(i, pick_b)) spies.push_back(i);   // W7-01-14
                 else if (world_.unit_is_engineer(su) &&
                          world_.engineer_action(i, pick_b) != World::EngineerAct::None) engs.push_back(i);

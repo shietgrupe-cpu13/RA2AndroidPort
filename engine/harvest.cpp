@@ -21,6 +21,23 @@ namespace {
 constexpr int kRingDx[8] = {0, 1, 1, 1, 0, -1, -1, -1};
 constexpr int kRingDy[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
 
+const UnitCombat* slave_profile(const Unit& worker, const std::vector<Unit>& units,
+                                const std::vector<Building>& buildings,
+                                const std::vector<BuildingTypeDef>& types) {
+    int type = -1;
+    const int manager = worker.w7.slave_manager;
+    if (manager >= 0 && manager < static_cast<int>(buildings.size())) {
+        type = buildings[static_cast<std::size_t>(manager)].type;
+    } else if (manager <= -2) {
+        const int mobile = -2 - manager;
+        if (mobile >= 0 && mobile < static_cast<int>(units.size()))
+            type = units[static_cast<std::size_t>(mobile)].deploys_into;
+    }
+    if (type < 0 || type >= static_cast<int>(types.size())) return nullptr;
+    const UnitCombat& profile = types[static_cast<std::size_t>(type)].slave_combat;
+    return profile.image.empty() ? nullptr : &profile;
+}
+
 bool is_passable(const std::vector<std::uint8_t>& passable, int gw, int gh, int x, int y) {
     if (x < 0 || y < 0 || x >= gw || y >= gh) return false;
     return passable[(size_t)y * (size_t)gw + (size_t)x] != 0;
@@ -290,6 +307,10 @@ void step_harvest(std::vector<Unit>& units, std::vector<Building>& buildings,
                   const HarvestScan& scan) {
     for (int idx = 0; idx < (int)units.size(); ++idx) {
         Unit& u = units[idx];
+        const UnitCombat* slave = slave_profile(u, units, buildings, types);
+        const double harvest_secs = slave ? std::max(1, slave->harvest_rate_micros) / 1000000.0 : kGulpSecs;
+        const double reload_secs = slave ? std::max(1, slave->slave_reload_rate_micros) / 1000000.0
+                                         : kUnloadSecsPerBale;
         if (!u.is_harvester || !u.alive || u.die_time >= 0.0 || u.cargo_of >= 0 ||
             u.is_aircraft)
             continue;  // carried harvester: mission FSM parks (CB-1); CB-2: an
@@ -425,8 +446,8 @@ void step_harvest(std::vector<Unit>& units, std::vector<Building>& buildings,
                 // OWN cell before the ring -- the doc confirms only the
                 // 8-neighbour ring walk, not an own-cell-first step.]
                 u.harv_timer += dt;
-                while (u.harv_timer >= kGulpSecs && u.harv == HarvState::Harvesting) {
-                    u.harv_timer -= kGulpSecs;
+                while (u.harv_timer >= harvest_secs && u.harv == HarvState::Harvesting) {
+                    u.harv_timer -= harvest_secs;
                     int tx = u.cell_x, ty = u.cell_y;
                     OreKind k = OreKind::None;
                     if (ore.has_ore(tx, ty)) {
@@ -674,9 +695,9 @@ void step_harvest(std::vector<Unit>& units, std::vector<Building>& buildings,
                 // matching the rig's fixed 2-slot ore/gems store); income =
                 // bales * Value; no PurifierBonus this phase.]
                 u.harv_timer += dt;
-                while (u.harv_timer >= kUnloadSecsPerBale &&
+                while (u.harv_timer >= reload_secs &&
                        (u.bales_ore > 0.0 || u.bales_gems > 0.0)) {
-                    u.harv_timer -= kUnloadSecsPerBale;
+                    u.harv_timer -= reload_secs;
                     int house = (u.house >= 0 && u.house < n_houses) ? u.house : 0;
                     double v;
                     if (u.bales_ore > 0.0) {

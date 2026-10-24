@@ -108,6 +108,27 @@ TEST_CASE("slave harvest: different manager edges unload without the truck dock 
     CHECK(r.units[0].bales_ore==0);CHECK(r.units[1].bales_ore==0);
 }
 
+TEST_CASE("slave harvest and reload use fractional SLAV rules rates") {
+    Rig r;
+    auto& profile=r.types[0].slave_combat;
+    profile.image="SLAV";
+    profile.harvest_rate_micros=50000;
+    profile.slave_reload_rate_micros=50000;
+    r.ore.set(2,2,OreKind::Ore,5,0);
+    auto& worker=r.harv(2,2);
+    worker.w7.slave_manager=0;
+    worker.harv=HarvState::Harvesting;
+    r.step(0.05);
+    CHECK(r.units[0].bales_ore==1);
+
+    worker.harv=HarvState::Unloading;
+    worker.harv_timer=0;
+    worker.bales_ore=1;
+    r.step(0.05);
+    CHECK(r.units[0].bales_ore==0);
+    CHECK(r.credits[0]==25);
+}
+
 TEST_CASE("harvest: gulps fill to exactly Storage then return") {
     Rig r;
     // Dense ore under the miner AND all 8 ring cells so 40 gulps are

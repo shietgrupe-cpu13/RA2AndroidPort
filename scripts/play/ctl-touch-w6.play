@@ -77,20 +77,17 @@ assert selected == 0
 touch tap unit 0:E1
 wait 20
 assert selected == 1
-touch tap touch:CMD
 touch tap touch:MORE                                      @W6-01-09
 wait 1
 assert touch_page2 == 1                                   @W6-01-09
 touch tap touch:TYPE                                      @W6-01-09
 wait 2
 assert selected >= 2                                      @W6-01-09
-assert touch_bar_open == 0
+assert touch_bar_open == 1
 # team 7: hold = create, tap = select
-touch tap touch:CMD
 touch tap touch:MORE
 touch hold touch:7                                        @W6-01-09
 wait 1
-touch tap touch:CMD
 touch tap touch:MORE
 touch tap touch:BACK
 assert touch_page2 == 0                                   @W6-01-09
@@ -99,7 +96,6 @@ touch tap touch:MORE
 touch tap touch:HOME                                      @W6-01-09
 wait 2
 # view bookmark 1: hold = set, tap = jump back
-touch tap touch:CMD
 touch tap touch:MORE
 touch hold touch:V1                                       @W6-01-09
 wait 1
@@ -107,7 +103,6 @@ let vx = cam_x
 touch drag xy 500 300 300 300
 wait 2
 assert cam_x != $vx
-touch tap touch:CMD
 touch tap touch:MORE
 touch tap touch:V1                                        @W6-01-09
 wait 1
@@ -118,7 +113,7 @@ view building 0:ATESLA
 wait 3
 touch pan2 xy 400 300 400 300
 wait 1
-touch tap touch:CMD
+touch tap touch:MORE
 touch tap touch:BOX                                       @W6-01-11
 wait 1
 assert touch_box == 1                                     @W6-01-11

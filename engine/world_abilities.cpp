@@ -83,9 +83,6 @@ bool World::order_deploy(int idx) {
             // and the unit stands up again UndeployDelay frames later (Guard
             // with that delay, then the undeploy). It holds no post.
             if (u.w7.t.deploy_area_fire) {
-                // Touch convenience: deploying a psychic releases its links
-                // before the blast; original-game behavior differs.
-                release_unit_mind_control(idx);
                 const WeaponSlot none;
                 const WeaponSlot& w = (u.deploy_fire_slot == 1 && u.w2.valid) ? secondary_view(u) : none;
                 if (w.valid) {

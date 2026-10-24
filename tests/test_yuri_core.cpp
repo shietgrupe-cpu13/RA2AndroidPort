@@ -1,5 +1,6 @@
 #include "doctest.h"
 #include "world.hpp"
+#include "faction_support.hpp"
 #include "harvest.hpp"
 #include "savegame.hpp"
 #include "weapon_resolve.hpp"
@@ -9,6 +10,7 @@
 #include "report_probe.hpp"
 #include "psychic_links.hpp"
 #include "psychic_sensor.hpp"
+#include "selection.hpp"
 #include <fstream>
 #include <iterator>
 using namespace ra2engine;
@@ -25,6 +27,32 @@ struct Rig {
 UnitCombat unit(const char* image) {
     UnitCombat c; c.image = image; c.strength = 100; c.speed_cps = 2;
     c.verses.assign(11,100); c.tg.rules_id = image; return c;
+}
+TEST_CASE("Yuri roster whitelist includes faction buildings, not shared map structures") {
+    CHECK(yuri_building_type("YACNST"));
+    CHECK(yuri_building_type("YAPSYT"));
+    CHECK(yuri_building_type("YAWALL"));
+    CHECK_FALSE(yuri_building_type("NATBNK"));
+    CHECK_FALSE(yuri_building_type("CAWASH"));
+    CHECK_FALSE(yuri_building_type("FENC01"));
+}
+TEST_CASE("enslaved workers are not commandable") {
+    Rig r; World w(r.map); w.add_combat_unit(2,2,0,unit("SLAV"));
+    CHECK(w.controllable_unit(0));
+    w.units()[0].w7.slave_manager=0;
+    CHECK_FALSE(w.controllable_unit(0));
+    Selection selection; selection.set(0); selection.prune(w);
+    CHECK(selection.empty());
+}
+TEST_CASE("slave rules timing survives save and load") {
+    Rig r; World w(r.map); BuildingTypeDef d; d.id="YAREFN"; d.slave_combat=unit("SLAV");
+    d.slave_combat.harvest_rate_micros=56000;
+    d.slave_combat.slave_reload_rate_micros=30000;
+    w.set_economy({d},{},OreValues{},1000,0,0);
+    const auto bytes=save::save_world(w);
+    World loaded(r.map); REQUIRE(save::load_world(loaded,bytes));
+    CHECK(loaded.btypes()[0].slave_combat.harvest_rate_micros==56000);
+    CHECK(loaded.btypes()[0].slave_combat.slave_reload_rate_micros==30000);
 }
 TEST_CASE("diagnostics: unit probes preserve saved state and catch broken references") {
     Rig r; World w(r.map);
@@ -99,7 +127,7 @@ TEST_CASE("Yuri core: presentation collects unit and building mind-control links
     CHECK(save::save_world(w)==before);
     w.units()[0].alive=false;CHECK(skirmish_control_links(w).size()==1);
 }
-TEST_CASE("Yuri core: infantry caps never auto-swap and deploy releases ownership") {
+TEST_CASE("Yuri core: infantry caps never auto-swap and deployed control stays linked") {
     for (const char* id : {"YURI","YURIPR"}) {
         Rig r;World w(r.map);auto c=unit(id);c.w7.mind_control=true;
         c.deploy_fire=true;c.deploy_fire_slot=1;c.w7.deploy_area_fire=true;
@@ -108,8 +136,10 @@ TEST_CASE("Yuri core: infantry caps never auto-swap and deploy releases ownershi
         w.units()[0].w7.mc_shot=1;w.resolve_skirmish_mind_control();
         for(int n=0;n<20;++n){w.units()[0].w7.mc_shot=2;w.resolve_skirmish_mind_control();}
         CHECK(w.units()[0].w7.mc_victims.size()==1);CHECK(w.units()[1].house==0);CHECK(w.units()[2].house==1);
-        REQUIRE(w.order_deploy(0));CHECK(w.units()[1].house==1);CHECK(w.units()[0].w7.mc_victims.empty());
+        REQUIRE(w.order_deploy(0));CHECK(w.units()[1].house==0);CHECK(w.units()[0].w7.mc_victims.size()==1);
         w.units()[0].w7.mc_shot=2;w.resolve_skirmish_mind_control();CHECK(w.units()[2].house==1);
+        w.units()[0].alive=false;w.prepare_skirmish_mind_control();
+        CHECK(w.units()[1].house==1);CHECK(w.units()[0].w7.mc_victims.empty());
     }
 }
 TEST_CASE("Yuri core: Mastermind overload uses configured damage and releases on death") {
@@ -138,7 +168,8 @@ TEST_CASE("Yuri core: Tank Bunker accepts one eligible tank, fires and unloads w
     d.can_be_occupied=d.can_occupy_fire=true;d.max_occupants=1;d.fw=d.fh=2;d.strength=1000;
     w.set_economy({d},{},OreValues{},1000,0,0);w.add_building(0,8,8,2,2,0,1000,0,0,true);
     auto tank=unit("LTNK");tank.is_vehicle=true;tank.w7.bunkerable=true;
-    tank.occupy_weapon.valid=true;tank.occupy_weapon.damage=20;tank.occupy_weapon.rof=10;tank.occupy_weapon.range=5;
+    tank.damage=20;tank.rof=10;tank.range=5;tank.primary_ag=true;
+    tank.occupy_weapon.valid=true;tank.occupy_weapon.damage=2;tank.occupy_weapon.rof=10;tank.occupy_weapon.range=1;
     tank.occupy_weapon.verses.assign(11,100);
     w.add_combat_unit(7,8,0,tank);w.add_combat_unit(6,8,0,tank);w.add_combat_unit(12,8,1,unit("TARGET"));
     CHECK(w.can_occupy(0,0));REQUIRE(w.campaign_occupy_now(0,0));

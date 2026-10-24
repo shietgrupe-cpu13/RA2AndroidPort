@@ -1005,6 +1005,10 @@ template <class Ar> void fields(Ar& ar, UnitCombat& v) {
     io(ar, v.tg);   // W6 fix #2 (save v29)
     io(ar, v.loco);   // W7 locomotion (save v35)
     io(ar, v.w7);   // v35: wave-7 fix (units)
+    if constexpr (!save::kHashing<Ar>) {
+        io(ar, v.harvest_rate_micros);
+        io(ar, v.slave_reload_rate_micros);
+    }
 }
 template <class Ar> void fields(Ar& ar, UnitTypeDef& v) {
     io(ar, v.id);

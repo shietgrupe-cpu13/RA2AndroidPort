@@ -2766,6 +2766,7 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
         owners.erase(std::remove_if(owners.begin(),owners.end(),[](unsigned char c){return std::isspace(c);}),owners.end());
         for(char& c:owners)c=static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
         if((","+owners+",").find(",YURICOUNTRY,")!=std::string::npos &&
+           ra2engine::yuri_building_type(id) &&
            std::find(building_ids.begin(),building_ids.end(),id)==building_ids.end()) building_ids.push_back(id);
     }
     ba.roster.reserve(building_ids.size());
@@ -2785,6 +2786,15 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
         const std::string slave = rules.section_string(id, "Enslaves", "");
         if (!slave.empty()) {
             d.slave_combat = resolve_combat_unit(rules, slave).combat;
+            const auto rate_micros = [](double seconds, double fallback) {
+                if (!std::isfinite(seconds) || seconds <= 0.0) seconds = fallback;
+                return static_cast<int>(std::clamp(std::llround(seconds * 1000000.0),
+                                                   1LL, 2147483647LL));
+            };
+            d.slave_combat.harvest_rate_micros =
+                rate_micros(rules.section_double(slave, "HarvestRate", 1.0), 1.0);
+            d.slave_combat.slave_reload_rate_micros =
+                rate_micros(rules.section_double(slave, "SlaveReloadRate", 2.0 / 15.0), 2.0 / 15.0);
             d.slave_count = std::clamp(static_cast<int>(rules.section_double(id, "SlavesNumber", 5)), 0, 32);
             d.slave_regen_rate = std::max(1, static_cast<int>(rules.section_double(id, "SlaveRegenRate", 500)));
             d.slave_storage = std::max(1, rules.storage(slave));
@@ -19075,7 +19085,6 @@ int main(int argc, char** argv) {
                 ra2engine::diag::note("SDL %s",msg);
                 auto* saved=static_cast<Relay*>(data);if(saved->previous)saved->previous(saved->context,category,priority,msg);
             },&relay);
-            ra2assets::asset_trace_callback().store(ra2engine::diag::asset);
             ra2engine::diag::note("ENGINE START version=%s",RA2_VERSION);
         }
     }

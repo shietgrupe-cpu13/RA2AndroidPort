@@ -537,8 +537,12 @@
     SDL_Rect net_chat_box_rect() const {
         const double sc = hud_touch_scale();
         const int h = static_cast<int>(28 * sc);
-        const int y = kWinH - h - static_cast<int>(70 * sc);
+        int y = kWinH - h - static_cast<int>(70 * sc);
         const int sw = static_cast<int>((hud_text_width("Send") + 24) * sc);
+        if (touch_bar_visible() && !touch_panel_collapsed_) {
+            const SDL_Rect panel = touch_panel_rect();
+            if (y + h > panel.y) y = std::max(8, panel.y - h - 8);
+        }
         return SDL_Rect{16, y, std::max(200, playfield_w_ - 48 - sw), h};
     }
     void net_chat_ime() {

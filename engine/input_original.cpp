@@ -43,7 +43,7 @@ bool can_board(const World& w, int ti, const Selection& sel) {
     for (int si : sel.ids()) {
         if (si >= static_cast<int>(w.units().size())) break;
         const Unit& su = w.units()[si];
-        if (si == ti || !w.controllable(su.house) || !su.alive || su.die_time >= 0.0) continue;
+        if (si == ti || !w.controllable_unit(si) || !su.alive || su.die_time >= 0.0) continue;
         if (can_load(w.units(), ti, si, [&w](int a, int b) { return w.are_allied(a, b); })) return true;
     }
     return false;
@@ -56,7 +56,7 @@ bool selection_can_move(const World& w, const Selection& sel) {
     for (int i : sel.ids()) {
         if (i >= static_cast<int>(w.units().size())) break;
         const Unit& u = w.units()[i];
-        if (!u.alive || u.die_time >= 0.0 || u.cargo_of >= 0 || !w.controllable(u.house)) continue;
+        if (!u.alive || u.die_time >= 0.0 || u.cargo_of >= 0 || !w.controllable_unit(i)) continue;
         any = true;
         if (!(u.deployed && !u.is_vehicle && (u.deploy_fire || u.abil.deployer))) return true;
     }
@@ -70,7 +70,7 @@ int first_selected_role(const World& w, const Selection& sel, bool spy) {
     for (int i : sel.ids()) {
         if (i >= static_cast<int>(w.units().size())) break;
         const Unit& u = w.units()[i];
-        if (!u.alive || u.die_time >= 0.0 || u.cargo_of >= 0 || !w.controllable(u.house)) continue;
+        if (!u.alive || u.die_time >= 0.0 || u.cargo_of >= 0 || !w.controllable_unit(i)) continue;
         if (spy ? w.unit_is_spy(u) : w.unit_is_engineer(u)) return i;
     }
     return -1;
@@ -81,7 +81,7 @@ bool Input::any_own_selected() const {
     for (int i : sel_.ids()) {
         if (i >= static_cast<int>(world_.units().size())) break;
         const Unit& u = world_.units()[i];
-        if (world_.controllable(u.house) && u.alive && u.die_time < 0.0) return true;
+        if (world_.controllable_unit(i) && u.alive && u.die_time < 0.0) return true;
     }
     return false;
 }
@@ -160,11 +160,11 @@ Input::Action Input::classify(int px, int py, bool shift, bool ctrl, bool alt) c
     // Enemy units keep the generous box (attack orders stay easy to give).
     if (ev_touch_ && idx >= 0 && !unit_body_hit(idx, px, py)) {
         if (b_art >= 0) idx = -1;
-        else if (units_sel && !shift && world_.controllable(us[idx].house)) idx = -1;
+        else if (units_sel && !shift && world_.controllable_unit(idx)) idx = -1;
     }
 
     if (!units_sel) {
-        if (idx >= 0 && world_.controllable(us[idx].house)) return shift ? Action::ToggleSelect : Action::Select;
+        if (idx >= 0 && world_.controllable_unit(idx)) return shift ? Action::ToggleSelect : Action::Select;
         if (b >= 0 && world_.buildings()[b].house == world_.order_issuer()) {
             if (selected_building_valid() && b == selected_building_ &&
                 is_unit_factory_type(world_.buildings()[b].type))
@@ -188,7 +188,7 @@ Input::Action Input::classify(int px, int py, bool shift, bool ctrl, bool alt) c
         for (int si : sel_.ids()) {
             if (si < 0 || si >= static_cast<int>(us.size())) continue;
             const Unit& su = us[si];
-            if (world_.controllable(su.house) && su.alive && su.die_time < 0.0 && su.cargo_of < 0 && pred(su))
+            if (world_.controllable_unit(si) && su.alive && su.die_time < 0.0 && su.cargo_of < 0 && pred(su))
                 return true;
         }
         return false;
@@ -245,11 +245,11 @@ Input::Action Input::classify(int px, int py, bool shift, bool ctrl, bool alt) c
             for (int si : sel_.ids()) {
                 if (si >= static_cast<int>(us.size())) break;
                 const Unit& su = us[si];
-                if (world_.controllable(su.house) && su.alive && su.die_time < 0.0 && su.passengers_max <= 0)
+                if (world_.controllable_unit(si) && su.alive && su.die_time < 0.0 && su.passengers_max <= 0)
                     return can_board(world_, idx, sel_) ? Action::Enter : Action::NoMove;
             }
         }
-        if (world_.controllable(u.house)) {
+        if (world_.controllable_unit(idx)) {
             if (shift) return Action::ToggleSelect;
             // W6-01-06 [engine deviation, touch]: with two or more units
             // selected, a tap on a unit OF THE SELECTION is an order to its
@@ -261,7 +261,7 @@ Input::Action Input::classify(int px, int py, bool shift, bool ctrl, bool alt) c
                 for (int si : sel_.ids()) {
                     if (si >= static_cast<int>(us.size())) break;
                     const Unit& su = us[si];
-                    if (world_.controllable(su.house) && su.alive && su.die_time < 0.0) ++nsel;
+                    if (world_.controllable_unit(si) && su.alive && su.die_time < 0.0) ++nsel;
                 }
                 if (nsel >= 2) return cell_walkable(cx, cy) ? Action::Move : Action::NoMove;
             }
@@ -275,7 +275,7 @@ Input::Action Input::classify(int px, int py, bool shift, bool ctrl, bool alt) c
                 for (int si : sel_.ids()) {
                     if (si >= static_cast<int>(us.size())) break;
                     const Unit& su = us[si];
-                    if (!world_.controllable(su.house) || !su.alive || su.die_time >= 0.0 ||
+                    if (!world_.controllable_unit(si) || !su.alive || su.die_time >= 0.0 ||
                         si == idx || su.passengers_max > 0)
                         continue;
                     return can_board(world_, idx, sel_) ? Action::Enter : Action::NoMove;   // W7-01-30
@@ -291,7 +291,7 @@ Input::Action Input::classify(int px, int py, bool shift, bool ctrl, bool alt) c
                 for (int si : sel_.ids()) {
                     if (si >= static_cast<int>(us.size())) break;
                     const Unit& su = us[si];
-                    if (!world_.controllable(su.house) || !su.alive || su.die_time >= 0.0) continue;
+                    if (!world_.controllable_unit(si) || !su.alive || su.die_time >= 0.0) continue;
                     if (su.abil.fire_kind != AbilityKind::IvanBomb) { all_ivan = false; break; }
                     all_ivan = true;
                 }
@@ -305,7 +305,7 @@ Input::Action Input::classify(int px, int py, bool shift, bool ctrl, bool alt) c
     for (int si : sel_.ids()) {
         if (si >= static_cast<int>(us.size())) break;
         const Unit& su = us[si];
-        if (su.is_harvester && world_.controllable(su.house) && su.alive && su.die_time < 0.0) {
+        if (su.is_harvester && world_.controllable_unit(si) && su.alive && su.die_time < 0.0) {
             harv = true;
             break;
         }
@@ -317,7 +317,7 @@ Input::Action Input::classify(int px, int py, bool shift, bool ctrl, bool alt) c
         // G16 (agent G) [RE: world-depth.md §A2]: selected Occupier infantry on
         // a building they may garrison (CanBeOccupiedBy) -> the enter cursor.
         for (int si : sel_.ids())
-            if (si < static_cast<int>(us.size()) && world_.controllable(us[si].house) && world_.can_occupy(si, b))
+            if (si < static_cast<int>(us.size()) && world_.controllable_unit(si) && world_.can_occupy(si, b))
                 return Action::Enter;
         // W7-01-14: only a non-allied Spyable building takes a spy.
         const int spy = first_selected_role(world_, sel_, true);
@@ -361,7 +361,7 @@ void Input::left_click_original(int px, int py, bool shift, uint32_t t_ms) {
     const bool own_tap = [&] {
         if (!ev_touch_) return false;
         const int i = unit_under(px, py);
-        return i >= 0 && world_.controllable(world_.units()[i].house) &&
+        return i >= 0 && world_.controllable_unit(i) &&
                (a == Action::Select || a == Action::Deploy ||
                 ((a == Action::Move || a == Action::NoMove) && unit_body_hit(i, px, py)));
     }();
@@ -640,13 +640,14 @@ bool Input::type_select() {
     for (int i : sel_.ids()) {
         if (i >= static_cast<int>(us.size())) break;
         const Unit& u = us[i];
-        if (world_.controllable(u.house) && u.alive && u.die_time < 0.0 &&
+        if (world_.controllable_unit(i) && u.alive && u.die_time < 0.0 &&
             std::find(types.begin(), types.end(), u.image) == types.end())
             types.push_back(u.image);
     }
     if (types.empty()) return false;
     auto matches = [&](const Unit& u) {
-        return world_.controllable(u.house) && u.alive && u.die_time < 0.0 && u.cargo_of < 0 &&
+        return u.w7.slave_manager == -1 && world_.controllable(u.house) &&
+               u.alive && u.die_time < 0.0 && u.cargo_of < 0 &&
                std::find(types.begin(), types.end(), u.image) != types.end();
     };
     auto on_screen = [&](const Unit& u) {
@@ -678,7 +679,7 @@ void Input::group_create(int n) {
     sel_.prune(world_);
     const auto& us = world_.units();
     for (std::size_t i = 0; i < us.size(); ++i) {
-        if (!world_.controllable(us[i].house)) continue;
+        if (!world_.controllable_unit(static_cast<int>(i))) continue;
         if (unit_group_[i] == n) unit_group_[i] = 0;
         if (sel_.has(static_cast<int>(i))) unit_group_[i] = n;
     }
@@ -689,7 +690,8 @@ void Input::group_add_select(int n) {
     sync_groups();
     const auto& us = world_.units();
     for (std::size_t i = 0; i < us.size(); ++i)
-        if (unit_group_[i] == n && world_.controllable(us[i].house) && us[i].alive && us[i].die_time < 0.0 &&
+        if (unit_group_[i] == n && world_.controllable_unit(static_cast<int>(i)) &&
+            us[i].alive && us[i].die_time < 0.0 &&
             us[i].cargo_of < 0)
             sel_.set(static_cast<int>(i));
     const int lo = lowest_selected();
@@ -709,7 +711,8 @@ void Input::group_select(int n, uint32_t t_ms) {
     last_group_t_ = t_ms ? t_ms : 1;
     bool any = false;
     for (std::size_t i = 0; i < world_.units().size(); ++i)
-        if (unit_group_[i] == n && world_.units()[i].alive && world_.units()[i].die_time < 0.0)
+        if (unit_group_[i] == n && world_.controllable_unit(static_cast<int>(i)) &&
+            world_.units()[i].alive && world_.units()[i].die_time < 0.0)
             any = true;
     if (!any) return;   // an empty group leaves the selection alone
     sel_.clear();

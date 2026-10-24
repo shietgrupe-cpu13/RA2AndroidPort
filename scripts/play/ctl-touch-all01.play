@@ -97,14 +97,15 @@ wait 2
 assert base_mode == none                      @W4-AM-07
 assert selected == $nsel                      @W4-AM-07
 
-# --- the command column: closed, opens, briefing, closes itself ------------------
+# --- the command panel: starts folded, opens, and folds on the arrow ---------------
 touch tap touch:CMD                           @W4-AM-05
 wait 2
 assert touch_bar_open == 1
+touch tap touch:MORE
 touch tap touch:BRF                           @W4-AM-11
 wait 2
 assert briefing_open == 1                     @W4-AM-11
-assert touch_bar_open == 0                    @W4-AM-05
+assert touch_bar_open == 1                    @W4-AM-05
 touch tap xy 560 360
 wait 2
 assert briefing_open == 0                     @W4-AM-11

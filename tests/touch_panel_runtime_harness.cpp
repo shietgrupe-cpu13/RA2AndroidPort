@@ -30,6 +30,8 @@ struct FakeWorld {
  std::vector<ra2engine::Building> bs;
  const auto& units()const{return us;} const auto& buildings()const{return bs;}
  bool controllable(int h)const{return h==0;}
+ bool controllable_unit(int i)const{return i>=0 && i<static_cast<int>(us.size()) &&
+   us[static_cast<std::size_t>(i)].w7.slave_manager==-1 && controllable(us[static_cast<std::size_t>(i)].house);}
  bool packable=false;
  bool can_pack_slave_miner(int)const{return packable;}
  ra2engine::World::Side house_side(int)const{return ra2engine::World::Side::Yuri;}
@@ -40,7 +42,9 @@ struct FakeInput {
  int selected_building()const{return building;}
  void type_select(){} void stop_selected(){++stops;} void guard_selected(){} void scatter_selected(){}
  void group_create(int n){created=n;} void group_select(int n,uint32_t){group=n;}
- bool placement_active()const{return false;} void placement_cell(int&,int&){} void handle(const InputEvent&){}
+ bool placing=false;int px=0,py=0;
+ bool placement_active()const{return placing;} void placement_cell(int&x,int&y){x=px;y=py;}
+ void handle(const InputEvent&e){px=e.x;py=e.y;}
 };
 struct Scene {
  FakeWorld world_; FakeInput input_; int local_house_=0;
@@ -61,6 +65,11 @@ struct Scene {
 InputEvent event(InputEvent::Kind kind,int x,int y){InputEvent e;e.kind=kind;e.touch=true;e.x=x;e.y=y;return e;}
 int main(){
  Scene s;s.touch_ui_=true;
+ assert(s.touch_panel_collapsed_);
+ auto firstArrow=s.touch_panel_toggle_rect();
+ auto firstDown=event(InputEvent::PointerDown,firstArrow.x+4,firstArrow.y+4);
+ auto firstUp=firstDown;firstUp.kind=InputEvent::PointerUp;
+ assert(s.touch_bar_handle(firstDown));assert(s.touch_bar_handle(firstUp));assert(!s.touch_panel_collapsed_);
  s.touch_add_=true;s.touch_box_=true;s.touch_command(s.TB_FIRE,false,0);
  assert(s.touch_fire_);assert(!s.touch_add_);assert(!s.touch_box_);
  auto fireDown=event(InputEvent::PointerDown,500,200);
@@ -90,6 +99,14 @@ int main(){
  s.input_.sel.set(0);assert(s.touch_bar_handle(d));u.x=500;assert(s.touch_bar_handle(u));assert(s.input_.stops==1);
  // Map-origin selection release over the panel must reach the map input.
  s.touch_down_btn_=-1;s.touch_panel_capture_=false;u.x=r.x+4;assert(!s.touch_bar_handle(u));
+ // Placement preview releases are consumed before the map's early-up path,
+ // while a right-button cancel release is allowed through.
+ s.input_.placing=true;s.input_.px=100;s.input_.py=100;
+ d=event(InputEvent::PointerDown,130,130);assert(s.touch_bar_handle(d));assert(s.touch_place_swallow_up_);
+ u=d;u.kind=InputEvent::PointerUp;assert(s.touch_bar_handle(u));assert(!s.touch_place_swallow_up_);
+ d=event(InputEvent::PointerDown,160,160);d.button=InputEvent::Right;assert(!s.touch_bar_handle(d));
+ u=d;u.kind=InputEvent::PointerUp;assert(!s.touch_bar_handle(u));
+ s.input_.placing=false;
  // The header and gaps consume complete taps; drags don't scroll terrain.
  auto p=s.touch_panel_rect();d=event(InputEvent::PointerDown,p.x+3,p.y+3);assert(s.touch_bar_handle(d));
  auto mv=d;mv.kind=InputEvent::PointerMove;mv.x=600;assert(s.touch_bar_handle(mv));

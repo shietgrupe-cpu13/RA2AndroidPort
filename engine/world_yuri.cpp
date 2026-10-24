@@ -10,16 +10,41 @@ bool active(const Unit& u) { return u.alive && u.die_time < 0 && u.cargo_of < 0 
 
 void World::release_unit_mind_control(int controller) {
     if (controller < 0 || controller >= static_cast<int>(units_.size())) return;
-    auto victims=std::move(units_[controller].w7.mc_victims);
+    const auto victims = units_[controller].w7.mc_victims;
     units_[controller].w7.mc_victims.clear();
     units_[controller].w7.overload_left=0;
     for (int vi : victims) {
         if (vi < 0 || vi >= static_cast<int>(units_.size())) continue;
-        Unit& v=units_[vi]; if (v.w7.mc_controller != controller) continue;
-        const int original=v.w7.mc_original_house;
-        v.w7.mc_controller=v.w7.mc_original_house=-1;
-        if (v.alive && v.die_time < 0 && original >= 0) set_unit_owner(vi,original);
+        release_unit_mind_control_victim(controller, vi, units_[vi].w7.mc_original_house);
     }
+}
+
+void World::release_unit_mind_control_victim(int controller, int victim, int original_house) {
+    if (controller >= 0 && controller < static_cast<int>(units_.size())) {
+        auto& victims = units_[controller].w7.mc_victims;
+        victims.erase(std::remove(victims.begin(), victims.end(), victim), victims.end());
+    }
+    if (victim < 0 || victim >= static_cast<int>(units_.size())) return;
+    Unit& v = units_[victim];
+    if (v.w7.mc_controller != controller) return;
+    const int original = original_house;
+    v.w7.mc_controller = v.w7.mc_original_house = -1;
+    if (v.alive && v.die_time < 0 && original >= 0) set_unit_owner(victim, original);
+}
+
+bool World::capture_unit_mind_control(int controller, int victim) {
+    if (controller < 0 || controller >= static_cast<int>(units_.size()) ||
+        victim < 0 || victim >= static_cast<int>(units_.size()) || controller == victim)
+        return false;
+    Unit& c = units_[controller];
+    Unit& v = units_[victim];
+    if (v.w7.mc_controller >= 0 || v.w7.mc_building >= 0) return false;
+    const int original = v.house;
+    set_unit_owner(victim, c.house);
+    v.w7.mc_original_house = original;
+    v.w7.mc_controller = controller;
+    c.w7.mc_victims.push_back(victim);
+    return true;
 }
 
 void World::prepare_skirmish_mind_control() {
@@ -37,19 +62,16 @@ void World::prepare_skirmish_mind_control() {
                 auto& held = buildings_[bi].w7.mc_victims;
                 held.erase(std::remove(held.begin(),held.end(),i),held.end());
             }
-            if (v.alive && v.die_time < 0 && v.w7.mc_original_house >= 0)
-                set_unit_owner(i,v.w7.mc_original_house);
-            v.w7.mc_building = v.w7.mc_original_house = -1;
+            if (v.w7.mc_building >= 0) {
+                const int original = v.w7.mc_original_house;
+                v.w7.mc_building = v.w7.mc_original_house = -1;
+                if (v.alive && v.die_time < 0 && original >= 0) set_unit_owner(i, original);
+            }
         }
         if (c >= 0 && (c >= static_cast<int>(units_.size()) || !active(units_[c]) ||
                        units_[c].warp_remaining > 0 || !v.alive || v.die_time>=0 || units_[c].house != v.house)) {
-            if (c < static_cast<int>(units_.size())) {
-                auto& victims = units_[c].w7.mc_victims;
-                victims.erase(std::remove(victims.begin(), victims.end(), i), victims.end());
-            }
-            if (v.alive && v.die_time < 0 && v.w7.mc_original_house >= 0)
-                set_unit_owner(i, v.w7.mc_original_house);
-            v.w7.mc_controller = v.w7.mc_original_house = -1;
+            const int original = v.w7.mc_original_house;
+            release_unit_mind_control_victim(c, i, original);
         }
     }
     for (Unit& u : units_) {
@@ -100,19 +122,11 @@ void World::resolve_skirmish_mind_control() {
             if (!u.attack_order) { u.target=-1; continue; } // full clones never auto-swap victims
             const int old = held.front();
             if (old >= 0 && old < static_cast<int>(units_.size())) {
-                Unit& freed = units_[old];
-                if (freed.w7.mc_controller == i) {
-                    if (freed.alive && freed.die_time < 0 && freed.w7.mc_original_house >= 0)
-                        set_unit_owner(old, freed.w7.mc_original_house);
-                    freed.w7.mc_controller = freed.w7.mc_original_house = -1;
-                }
+                const int original = units_[old].w7.mc_original_house;
+                release_unit_mind_control_victim(i, old, original);
             }
-            held.clear();
         }
-        const int original = v.house;
-        set_unit_owner(vi, u.house);
-        v.w7.mc_original_house = original; v.w7.mc_controller = i;
-        held.push_back(vi);
+        if (!capture_unit_mind_control(i, vi)) continue;
         u.target = -1; u.attack_order = false;
     }
 }

@@ -1700,11 +1700,10 @@ private:
         Track& vt = utrack_[(std::size_t)v];
         ra2engine::Unit& vu = us[(std::size_t)v];
         if (vu.w7.mc_controller != ctl) return;   // held by somebody else now
-        vu.w7.mc_controller = -1;
         const int orig = vt.mc_orig;
         vt.mc_orig = -1;
+        w_.release_unit_mind_control_victim(ctl, v, orig);
         if (orig < 0 || !live(vu)) return;
-        w_.set_unit_owner(v, orig);
         if (fate && !w_.human_commanded(orig) && ctl >= 0 && ctl < (int)utrack_.size()) {
             if (vt.team >= 0 && vt.team < (int)teams_.size()) {
                 std::vector<int>& mm = teams_[(std::size_t)vt.team].members;
@@ -1877,7 +1876,10 @@ private:
             raise_attacked(vt, from, u.house);
             // [RE: TechnoClass::SetOwningHouse FUN_00700940]: the victim drops
             // its target and move and guards where it stands.
-            w_.set_unit_owner(vi, u.house);
+            if (!w_.capture_unit_mind_control(ci, vi)) {
+                vt.mc_orig = -1;
+                continue;
+            }
             // [RE: Capture 0x471C80 -> 0x6E9DD0]: the victim always leaves its
             // team (W7-10-01 [RE: DecideUnitFate FUN_004722E0 @0x4722FB]); a
             // computer capturer then rolls its fate below.
@@ -1887,8 +1889,6 @@ private:
             }
             vt.team = -1;
             vt.hunt = false;
-            v.w7.mc_controller = ci;
-            u.w7.mc_victims.push_back(vi);
             t.mc_victim = vi;
             u.target = -1;
             u.attack_order = false;

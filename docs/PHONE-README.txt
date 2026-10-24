@@ -63,6 +63,13 @@ name. MAIN MENU asks before it throws that game away. If you won a mission
 and the game was closed on the results page or the next loading screen,
 the next start offers CONTINUE CAMPAIGN?.
 
+Touch controls
+--------------
+The command panel starts collapsed. Tap its small arrow at the lower-left
+to show the commands; tap the arrow again to fold it away. The panel stays
+in the state you chose while playing. Its buttons retain their full touch
+targets, and the multiplayer chat line moves above the expanded panel.
+
 Playing with friends (network)
 ------------------------------
 - Same Wi-Fi: one player taps Network -> Host Game; the others tap

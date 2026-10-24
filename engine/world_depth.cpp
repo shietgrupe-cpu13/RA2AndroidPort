@@ -389,7 +389,12 @@ double World::garrison_range(int bi) const {
     const Building& b = buildings_[bi];
     if (btypes()[b.type].tank_bunker && !b.occupants.empty()) {
         const Unit& u=units_[b.occupants.front()];
-        return u.occupy_w.range+btypes()[b.type].bunker_range;
+        const bool elite = u.vet.recv ? is_elite(u.vet.veterancy) : u.veteran_rank >= 2;
+        const double primary_range =
+            elite && u.vet.recv && u.vet.has_elite ? u.vet.elite.range : u.vet.base.range;
+        const WeaponSlot secondary = secondary_view(u);
+        const double secondary_range = secondary.valid ? secondary.range : 0.0;
+        return std::max(primary_range, secondary_range) + btypes()[b.type].bunker_range;
     }
     return std::min(b.fw, b.fh) / 2 + depth_rules_.occupy_weapon_range;
 }
@@ -417,12 +422,42 @@ void World::step_garrison_combat(double dt) {
         WeaponSlot w = (elite && occ.occupy_w_elite.valid) ? occ.occupy_w_elite : occ.occupy_w;
         const BuildingTypeDef& type=btypes()[b.type];
         if (type.tank_bunker && occ.house!=b.house) continue;
-        auto bunker_slot = [&](const Unit& target) {
-            const int slot=unit_weapon_for_unit(occ,target);
-            return slot==1 ? secondary_view(occ) : slot==0 ?
-                ((elite && occ.occupy_w_elite.valid) ? occ.occupy_w_elite : occ.occupy_w) : WeaponSlot{};
+        auto bunker_slot = [&](int slot) {
+            if (slot == 1) return secondary_view(occ);
+            if (slot != 0) return WeaponSlot{};
+            WeaponSlot primary = occ.occupy_w;
+            const WeaponStats& stats =
+                (elite && occ.vet.recv && occ.vet.has_elite) ? occ.vet.elite : occ.vet.base;
+            primary.valid = true;
+            primary.damage = stats.damage;
+            primary.rof = stats.rof;
+            primary.range = stats.range;
+            primary.verses = stats.verses;
+            primary.cell_spread = stats.cell_spread;
+            primary.percent_at_max = stats.percent_at_max;
+            primary.affects_allies = stats.affects_allies;
+            primary.proj = (elite && occ.p_proj_elite_set) ? occ.p_proj_elite : occ.p_proj;
+            primary.aa = occ.p_aa;
+            primary.ag = occ.p_ag;
+            primary.wall_flags = stats.wall_flags;
+            primary.inf_death = stats.inf_death;
+            primary.prone_damage = stats.prone_damage;
+            primary.burst = stats.burst;
+            primary.omni_fire = stats.omni_fire;
+            primary.sonic = stats.sonic;
+            primary.shrapnel_count = stats.shrapnel_count;
+            primary.shrapnel_damage = stats.shrapnel_damage;
+            primary.shrapnel_range = stats.shrapnel_range;
+            primary.shrapnel_verses = stats.shrapnel_verses;
+            return primary;
         };
-        if (!w.valid) continue;
+        auto bunker_unit_slot = [&](const Unit& target) {
+            return bunker_slot(unit_weapon_for_unit(occ, target));
+        };
+        auto bunker_building_slot = [&](const Building& target) {
+            return bunker_slot(unit_weapon_for_building(occ, target.armor_ix));
+        };
+        if (!type.tank_bunker && !w.valid) continue;
         const double range = garrison_range(bi);
         const double cx = b.cx + (b.fw - 1) / 2.0, cy = b.cy + (b.fh - 1) / 2.0;
         auto engageable = [&](int j) {
@@ -431,7 +466,7 @@ void World::step_garrison_combat(double dt) {
             if (!v.alive || v.die_time >= 0.0 || v.cargo_of >= 0) return false;
             if (!is_enemy(b.house, v.house) || disguise_fools(b.house, v)) return false;   // W7-01-02
             if (!v.seen_by_house(b.house)) return false;   // fv7c: 32-bit house mask
-            if (!slot_can_target(type.tank_bunker ? bunker_slot(v) : w, unit_airborne(v), v.armor_ix)) return false;
+            if (!slot_can_target(type.tank_bunker ? bunker_unit_slot(v) : w, unit_airborne(v), v.armor_ix)) return false;
             return om::hypot(v.fx - cx, v.fy - cy) <= range + 0.5;
         };
         // W7-02-10: a structure target (an order, or the defence rule's
@@ -450,7 +485,7 @@ void World::step_garrison_combat(double dt) {
                 if (!armed && !(house_is_computer(b.house) && ai_threat_any_building())) return false;
                 if (!object_visible_at(b.house, o.cx, o.cy)) return false;
             }
-            if (!slot_can_target(w, false, o.armor_ix)) return false;
+            if (!slot_can_target(type.tank_bunker ? bunker_building_slot(o) : w, false, o.armor_ix)) return false;
             double best = -1.0;
             for (const Cellxy& c : foundation_cells(o.cx, o.cy, o.fw, o.fh)) {
                 const double d = om::hypot(c.x - cx, c.y - cy);
@@ -485,7 +520,8 @@ void World::step_garrison_combat(double dt) {
             units_[b.occupants.front()].turret_facing=facing_u16_from_delta(tx-cx,ty-cy);
         }
         if ((b.garrison_target < 0 && tbld < 0) || b.garrison_rearm_frames > 0.0) continue;
-        if (type.tank_bunker && b.garrison_target >= 0) w=bunker_slot(units_[b.garrison_target]);
+        if (type.tank_bunker)
+            w = tbld >= 0 ? bunker_building_slot(buildings_[tbld]) : bunker_unit_slot(units_[b.garrison_target]);
         const double rof_mult=type.tank_bunker ? type.bunker_rof : depth_rules_.occupy_rof_mult;
         const double damage_mult=type.tank_bunker ? type.bunker_damage : depth_rules_.occupy_damage_mult;
         // TechnoClass::GetROF (FUN_006FC460): ROF / OccupantCount, then

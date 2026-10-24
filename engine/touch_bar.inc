@@ -26,7 +26,7 @@ const char* touch_deploy_label() const {
     for (int i : input_.selection().ids()) {
         if (i < 0 || i >= static_cast<int>(world_.units().size())) continue;
         const auto& u = world_.units()[i];
-        if (!u.alive || u.die_time >= 0 || u.cargo_of >= 0 || !world_.controllable(u.house)) continue;
+        if (!u.alive || u.die_time >= 0 || u.cargo_of >= 0 || !world_.controllable_unit(i)) continue;
         if (!u.cargo.empty()) add("UNLOAD");
         else if (u.deploys_into >= 0 || u.deploy_fire || (u.abil.deployer && u.abil.deploy.valid))
             add(u.w7.t.mind_control && !u.w7.mc_victims.empty() ? "RELEASE" : u.deployed ? "UNDEPLOY" : "DEPLOY");
@@ -46,7 +46,7 @@ bool touch_button_enabled(int id) const {
         for (int i : input_.selection().ids()) {
             if (i < 0 || i >= static_cast<int>(world_.units().size())) continue;
             const auto& u = world_.units()[i];
-            if (u.alive && u.die_time < 0 && u.cargo_of < 0 && world_.controllable(u.house) &&
+            if (u.alive && u.die_time < 0 && u.cargo_of < 0 && world_.controllable_unit(i) &&
                 (!u.cargo.empty() || u.deploys_into >= 0 || u.deploy_fire || (u.abil.deployer && u.abil.deploy.valid))) return true;
         }
         const int b = input_.selected_building();
@@ -58,7 +58,7 @@ bool touch_button_enabled(int id) const {
         for (int i : input_.selection().ids()) {
             if (i < 0 || i >= static_cast<int>(world_.units().size())) continue;
             const auto& u = world_.units()[i];
-            if (u.alive && u.die_time < 0 && u.cargo_of < 0 && world_.controllable(u.house)) return true;
+            if (u.alive && u.die_time < 0 && u.cargo_of < 0 && world_.controllable_unit(i)) return true;
         }
         return false;
     }
@@ -262,6 +262,10 @@ bool touch_bar_handle(ra2engine::InputEvent& ev) {
         return touch_panel_capture_ && ev.kind == ra2engine::InputEvent::PointerMove;
     }
     if (ev.kind == ra2engine::InputEvent::PointerDown) touch_panel_capture_ = touch_panel_contains(ev.x,ev.y);
+    if (ev.kind == ra2engine::InputEvent::PointerUp && touch_place_swallow_up_) {
+        touch_place_swallow_up_ = false;
+        if (ev.button == ra2engine::InputEvent::Left) return true;
+    }
     // A map-origin selection drag must still receive its release over the panel.
     if (ev.kind == ra2engine::InputEvent::PointerUp && !touch_panel_capture_ && touch_down_btn_ < 0) {
         touch_apply_modifiers(ev);
@@ -312,9 +316,6 @@ bool touch_bar_handle(ra2engine::InputEvent& ev) {
                 touch_place_swallow_up_ = true;
                 return true;   // preview only
             }
-        } else if (touch_place_swallow_up_) {
-            touch_place_swallow_up_ = false;
-            return true;
         }
     } else {
         touch_place_cx_ = touch_place_cy_ = INT_MIN;
@@ -356,7 +357,7 @@ void draw_touch_bar(SDL_Renderer* ren, ra2engine::TextureCache& tc) {
         const int id = bs[static_cast<size_t>(i)].id;
         const bool armed_mod = touch_add_ || touch_fire_ || touch_move_ || touch_box_;
         const bool on = (id == TB_ADD && touch_add_) || (id == TB_FIRE && touch_fire_) ||
-                        (id == TB_MOVE && touch_move_) || (id == TB_TOGGLE && (touch_bar_open_ || armed_mod)) ||
+                        (id == TB_MOVE && touch_move_) || (id == TB_TOGGLE && (touch_page2_ || armed_mod)) ||
                         (id == TB_BRIEF && show_briefing_) || (id == TB_BOX && touch_box_) ||
                         (id == TB_MORE && touch_page2_);
         const auto skin=touch_skin();
@@ -369,7 +370,7 @@ void draw_touch_bar(SDL_Renderer* ren, ra2engine::TextureCache& tc) {
             SDL_RenderFillRect(ren, &r);
         }
         std::string label = id == TB_DEPLOY ? touch_deploy_label() : bs[static_cast<size_t>(i)].label;
-        if (id == TB_TOGGLE && !touch_bar_open_ && armed_mod)   // closed: show what is armed
+        if (id == TB_TOGGLE && armed_mod)
             label = touch_add_ ? "+SEL" : touch_fire_ ? "FIRE" : touch_move_ ? "MOVE" : "BOX";
         const bool has_icon = id < TB_VIEW1 && id != TB_BRIEF;
         if (has_icon) draw_touch_icon(ren, id, r, enabled);
@@ -385,7 +386,6 @@ bool touch_ui_ = true;    // a phone: the dock is there from the first frame
 #else
 bool touch_ui_ = false;   // desktop: appears after the first touch event
 #endif
-bool touch_bar_open_ = true; // Compatibility state for diagnostics.
 bool touch_add_ = false, touch_fire_ = false, touch_move_ = false;
 bool touch_box_ = false;     // W6-01-11 sticky BOX (TouchGestures::set_box_mode)
 bool touch_page2_ = false;   // W6-01-09 the MORE page
@@ -395,4 +395,4 @@ bool touch_place_swallow_up_ = false;
 
 bool touch_panel_capture_ = false;
 
-bool touch_panel_collapsed_ = false; // Hide only the GUI; keep gesture/modifier state.
+bool touch_panel_collapsed_ = true; // Start folded; keep gesture/modifier state.

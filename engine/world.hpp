@@ -1062,6 +1062,8 @@ public:
     Unit& add_combat_unit(int cell_x, int cell_y, int house, const UnitCombat& c);
     void step_yuri_workers(bool relocate = true);
     void release_unit_mind_control(int controller);
+    void release_unit_mind_control_victim(int controller, int victim, int original_house);
+    bool capture_unit_mind_control(int controller, int victim);
     void prepare_skirmish_mind_control();
     void resolve_skirmish_mind_control();
     bool try_building_mind_control(int building, int victim, int slot = 0);
@@ -1734,6 +1736,11 @@ public:
     // True for the issuing house (set_order_issuer; house 0 by default) and,
     // for a human issuer, every PlayerControl house (W2-CA-02).
     bool controllable(int h) const { return can_command(order_issuer_, h); }
+    bool controllable_unit(int idx) const {
+        return idx >= 0 && idx < static_cast<int>(units_.size()) &&
+               units_[static_cast<std::size_t>(idx)].w7.slave_manager == -1 &&
+               controllable(units_[static_cast<std::size_t>(idx)].house);
+    }
     // Number of houses (default 3). The six per-house vectors + house_defeated_
     // are sized to this. Grows via set_house.
     int  house_count() const { return houses_.empty() ? 3 : (int)houses_.size(); }

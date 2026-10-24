@@ -136,6 +136,12 @@ struct UnitCombat {
     // visibility grids are empty). NOT read by world_hash.
     int sight = 0;
 
+    // Slave workers use their own SLAV rules cadence rather than the generic
+    // harvester fallback. These are immutable Rules-derived profile values,
+    // not saved simulation state.
+    int harvest_rate_micros = 1000000;
+    int slave_reload_rate_micros = 133333;
+
     // --- P5 Veterancy + Crates [RE: veterancy.md V3/V4/V10/V11/V14/C8] ---
     // Resolved once by main.cpp's resolve_combat_unit like every stat above.
     // ALL defaults inert: World reads them only past the enable_veterancy

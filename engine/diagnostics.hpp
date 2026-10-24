@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstdarg>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <mutex>
 #include <set>
@@ -38,15 +39,19 @@ inline bool start(const std::string& dir,std::size_t limit=1024*1024) {
     if(ec)return false;rotate("engine");rotate("assets");
     s.log=std::fopen((dir+"/engine-current.log").c_str(),"wb");
     s.assets=std::fopen((dir+"/assets-current.log").c_str(),"wb");
+    if(s.log)std::setvbuf(s.log,nullptr,_IOLBF,4096);
+    if(s.assets)std::setvbuf(s.assets,nullptr,_IOLBF,4096);
     s.enabled=s.log!=nullptr;return s.enabled;
 }
 inline void write(const char* text,std::size_t n) noexcept { try {
     auto& s=state();if(!s.enabled.load())return;
     std::lock_guard<std::mutex> lock(s.mutex);if(!s.log)return;
     if(s.bytes+n>s.limit){std::fclose(s.log);s.log=nullptr;rotate("engine");
-        s.log=std::fopen((s.dir+"/engine-current.log").c_str(),"wb");s.bytes=0;}
+        s.log=std::fopen((s.dir+"/engine-current.log").c_str(),"wb");
+        if(s.log)std::setvbuf(s.log,nullptr,_IOLBF,4096);s.bytes=0;}
     if(!s.log)return;
-    n=std::min(n,s.limit);std::fwrite(text,1,n,s.log);std::fflush(s.log);s.bytes+=n;
+    n=std::min(n,s.limit);std::fwrite(text,1,n,s.log);
+    if(n && std::memchr(text,'\n',n))std::fflush(s.log);
     } catch (...) { /* Logging must never terminate the simulation. */ }
 }
 inline void note(const char* fmt,...) {
@@ -72,7 +77,7 @@ inline void asset(const char* kind,const std::string& name,const std::string& so
     const std::string key=std::string(kind)+" "+name.substr(0,400)+" <- "+source.substr(0,500);
     if(s.asset_bytes+key.size()+40>1024*1024)return;
     if(!s.seen.insert(key).second)return;
-    std::fprintf(s.assets,"%s bytes=%llu\n",key.c_str(),static_cast<unsigned long long>(size));std::fflush(s.assets);s.asset_bytes+=key.size()+40;
+    std::fprintf(s.assets,"%s bytes=%llu\n",key.c_str(),static_cast<unsigned long long>(size));s.asset_bytes+=key.size()+40;
     } catch (...) { /* Logging must never terminate the simulation. */ }
 }
 inline void stop() {
