@@ -30,8 +30,10 @@ struct PipArt {
     ra2assets::ShpFile pipbrd, pips;
     ra2assets::Palette pal;
     bool ok = false;
-    ra2assets::ShpFile bomb;   // W6-04-11: conquer.mix bomb.shp (the Ivan bomb icon)
+    ra2assets::ShpFile bomb, wrench; // cache.mix BOMBCURS/WRENCH, MOUSEPAL
+    ra2assets::Palette status_pal;
     bool has_bomb = false;
+    bool has_wrench = false;
     // W7-12-05 [RE: DrawPips 0x708F10 -- non-buildings draw their pip rows
     // with PIPS2.SHP]: the YR conqmd.mix copy (frames 1 green, 2 yellow,
     // 3 white, 4 red, 5 blue, 13 tall green ammo).
@@ -61,9 +63,15 @@ void pips_load(const ra2assets::MixFile& ra2) {
             art.pal = ra2assets::Palette::load(raw.data(), raw.size());
             art.ok = art.pipbrd.count() >= 2 && art.pips.count() >= 18;
         }
-        if (const ra2assets::MixEntry* bm = conquer.find(std::string("bomb.shp"))) {   // W6-04-11
-            art.bomb = ra2assets::ShpFile::load(conquer.read(*bm));
-            art.has_bomb = art.bomb.count() > 0;
+        if (const auto* palette=cache.find(std::string("mousepal.pal"))) {
+            const auto raw=cache.read(*palette);
+            art.status_pal=ra2assets::Palette::load(raw.data(),raw.size());
+            if(const auto* e=cache.find(std::string("bombcurs.shp"))) {
+                art.bomb=ra2assets::ShpFile::load(cache.read(*e));art.has_bomb=art.bomb.count()>=12;
+            }
+            if(const auto* e=cache.find(std::string("wrench.shp"))) {
+                art.wrench=ra2assets::ShpFile::load(cache.read(*e));art.has_wrench=art.wrench.count()>=7;
+            }
         }
         // W7-12-05 / W7-12-22: PIPS2.SHP and the 21-frame PIPS.SHP of YR
         // (conqmd.mix), the RA2 conquer.mix PIPS2 as the fallback.
@@ -323,33 +331,56 @@ void draw_building_pips(SDL_Renderer* ren, ra2engine::TextureCache& tc, int hp, 
 // W6-04-11: see the declaration in main.cpp.
 void draw_bomb_icons(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2engine::World& world,
                      const std::vector<ra2engine::Unit>& us, const ra2engine::Camera& cam) {
-    if (g_pips && g_pips->has_bomb) {
+    if (g_pips) {
         const std::uint64_t now = world.ability_frame();
-        const int nf = g_pips->bomb.count();
+        const int duration=world.ability_rules().ivan_timed_delay;
+        const auto rate=g_walk_rules?pres_clean(g_walk_rules->get("AudioVisual","IvanIconFlickerRate")):std::string();
+        const int flicker=rate.empty()?8:std::max(1,std::atoi(rate.c_str()));
         auto bomb_frame = [&](std::int64_t det) {
-            const long left = std::max<long>(0, static_cast<long>(det - static_cast<std::int64_t>(now)));
-            const int stage = std::clamp(5 - static_cast<int>(left * 6 / 451), 0, 5);
-            const int f = stage * 2 + static_cast<int>((now / 8) & 1);
-            return nf >= 12 ? f : f % nf;
+            return ra2engine::attached_bomb_clock(now,det,duration,flicker);
+        };
+        auto bomb_visible=[&](int planter_house,int x,int y,int z) {
+            if(planter_house==g_local_house)return true;
+            if(!g_walk_rules)return false;
+            // Rendering-only detector query. The native retained 46-frame
+            // visibility refresh is not modelled here; never show every
+            // enemy bomb merely because its carrier is visible.
+            for(const auto& detector:us) {
+                if(!detector.alive || detector.die_time>=0 || detector.cargo_of>=0 || detector.house!=g_local_house)continue;
+                const auto& id=detector.tg.t.rules_id.empty()?detector.image:detector.tg.t.rules_id;
+                const int sight=std::atoi(pres_clean(g_walk_rules->get(id,"BombSight")).c_str());
+                if(sight<=0)continue;
+                const double dx=ra2engine::unit_lept_x(detector)-double(x),dy=ra2engine::unit_lept_y(detector)-double(y),
+                    dz=ra2engine::unit_lept_z(detector)-double(z),radius=sight*256.0;
+                if(dx*dx+dy*dy+dz*dz<radius*radius)return true;
+            }
+            return false;
         };
         for (const ra2engine::Unit& u : us) {
-            if (u.bomb_frame < 0 || !u.alive || u.die_time >= 0.0 || u.cargo_of >= 0) continue;
-            if (world.unit_hidden_from(0, u) || !(u.seen_by_mask & 1u)) continue;
+            if (!g_pips->has_bomb || bomb_frame(u.bomb_frame)<0 || !u.alive || u.die_time >= 0.0 || u.cargo_of >= 0) continue;
+            if (world.unit_hidden_from(g_local_house, u) ||
+                (u.house!=g_local_house && !world.object_visible_at(g_local_house,u.cell_x,u.cell_y))) continue;
+            if(!bomb_visible(u.bomb_house,ra2engine::unit_lept_x(u),ra2engine::unit_lept_y(u),ra2engine::unit_lept_z(u)))continue;
             const int up = (u.is_aircraft && u.altitude > 0.0) ? ra2engine::altitude_to_screen_dy(u.altitude) : 0;
             const double ufx = u.fx + u.sub_x / 256.0, ufy = u.fy + u.sub_y / 256.0;
             const int sx = static_cast<int>(std::lround((ufx - ufy) * 30.0)) + cam.x + 30;
             const int sy = static_cast<int>(std::lround((ufx + ufy) * 15.0 - u.level * 15)) + cam.y + 15 - up;
             blit_shp_centered(ren, tc, "w6bomb:" + std::to_string(bomb_frame(u.bomb_frame)), g_pips->bomb,
-                              bomb_frame(u.bomb_frame), g_pips->pal, sx, sy - 34);
+                              bomb_frame(u.bomb_frame), g_pips->status_pal, sx, sy);
         }
         for (const ra2engine::Building& b : world.buildings()) {
-            if (b.bomb_frame < 0 || !b.alive || b.state == ra2engine::Building::State::Dead) continue;
-            const double cx = b.cx + (b.fw - 1) / 2.0, cy = b.cy + (b.fh - 1) / 2.0;
-            const int sx = static_cast<int>(std::lround((cx - cy) * 30.0)) + cam.x + 30;
-            const int sy = static_cast<int>(std::lround((cx + cy) * 15.0 - world.cell_level(b.cx, b.cy) * 15)) +
-                           cam.y + 15 - 40;
-            blit_shp_centered(ren, tc, "w6bomb:" + std::to_string(bomb_frame(b.bomb_frame)), g_pips->bomb,
-                              bomb_frame(b.bomb_frame), g_pips->pal, sx, sy);
+            if (!b.alive || b.state == ra2engine::Building::State::Dead ||
+                (b.house!=g_local_house && !world.object_visible_at(g_local_house,b.cx,b.cy))) continue;
+            const auto point=ra2engine::building_draw_point(b.cx,b.cy,world.cell_level(b.cx,b.cy));
+            int bx=0,by=0,bz=0;ra2engine::building_aim_lept(b,world.cell_level(b.cx,b.cy),bx,by,bz);
+            if(g_pips->has_bomb && bomb_frame(b.bomb_frame)>=0 && bomb_visible(b.bomb_house,bx,by,bz))
+                blit_shp_centered(ren,tc,"w6bomb:"+std::to_string(bomb_frame(b.bomb_frame)),g_pips->bomb,
+                    bomb_frame(b.bomb_frame),g_pips->status_pal,point.x+cam.x,point.y+cam.y);
+            if(g_pips->has_wrench && b.being_repaired) {
+                const int frame=ra2engine::repair_wrench_frame(world.repair_frame());
+                blit_shp_centered(ren,tc,"repair-wrench:"+std::to_string(frame),g_pips->wrench,
+                    frame,g_pips->status_pal,point.x+cam.x,point.y+cam.y);
+            }
         }
     }
 }

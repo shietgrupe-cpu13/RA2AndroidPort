@@ -63,6 +63,7 @@ ra2engine::ProjectilePresentation g_projectile_motion;
 #include "debug_ai.hpp"
 #include "disk_laser.hpp"
 #include "defense_muzzle.hpp"
+#include "techno_status.hpp"
 ra2engine::UnitPresentation g_unit_motion;
 #include "shell_layout.hpp"
 #include "ra2assets/asset_trace.hpp"

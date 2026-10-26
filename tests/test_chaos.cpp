@@ -11,6 +11,7 @@
 #include "disk_laser.hpp"
 #include "defense_muzzle.hpp"
 #include "weapon_unit.hpp"
+#include "techno_status.hpp"
 #include "skirmish_lobby.hpp"
 using ra2assets::Rules;
 #include "../engine/ai_side_catalog.inc"
@@ -60,6 +61,18 @@ TEST_CASE("Deployment legality: area deployment cannot leak targeted primary fir
  w.units()[0].deployed=false;
  for(int f=0;f<20;++f)w.step(1.0/15);
  CHECK(w.units()[1].hp<1000);
+}
+TEST_CASE("Techno status: clock follows configured fuse and flicker without advancing gameplay") {
+ CHECK(attached_bomb_clock(100,550,450,8)==0);
+ CHECK(attached_bomb_clock(175,550,450,8)==3);
+ CHECK(attached_bomb_clock(550,550,450,8)==11);
+ CHECK(attached_bomb_clock(100,1000,900,8)==0);
+ CHECK(attached_bomb_clock(400,1000,900,8)==4);
+ CHECK(attached_bomb_clock(10,-1,450,8)==-1);
+ CHECK(attached_bomb_clock(10,20,0,8)==-1);
+ CHECK(attached_bomb_clock(10,20,450,0)==-1);
+ CHECK(repair_wrench_frame(0)==0);CHECK(repair_wrench_frame(1)==3);
+ CHECK(repair_wrench_frame(2)==6);CHECK(repair_wrench_frame(3)==0);
 }
 TEST_CASE("CMisl launch: vertical raise uses RaiseRate without changing Dreadnought tilt") {
  RocketBlock b;b.pause_frames=2;b.tilt_frames=5;b.raise_rate=3;
