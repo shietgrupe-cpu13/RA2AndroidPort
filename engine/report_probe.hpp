@@ -27,7 +27,7 @@ inline void probe_world(const World& w) {
             if (invalid <= 8) note("CHECK unit=%zu invalid_slave_manager=%d", i, manager);
         }
         if (u.moving() && u.wait_time >= 3.0) ++blocked;
-        const bool relevant = u.image == "SLAV" || u.image == "SMIN" || u.image == "YTNK" || u.image=="DISK" || u.image=="LTNK" || u.image=="BRUTE" || u.image=="CAOS" || u.image=="TELE";
+        const bool relevant = u.image == "SLAV" || u.image == "SMIN" || u.image == "YTNK" || u.image=="DISK" || u.image=="LTNK" || u.image=="BRUTE" || u.image=="CAOS" || u.image=="TELE" || u.image=="DESO" || u.image=="GI" || u.image=="GGI" || u.an.t.missile || u.an.t.spawns_number>0;
         if ((relevant || stalled) && emitted++ < 24) {
             note("UNIT unit=%zu image=%s cell=%d,%d pos=%.3f,%.3f level=%d deck=%d moving=%d path=%zu/%zu wait_s=%.3f harv=%d ore_target=%d,%d cargo=%.1f,%.1f slave_manager=%d transport=%d target=%d building_target=%d",
                 i, u.image.c_str(), u.cell_x, u.cell_y, u.fx, u.fy, u.level, u.on_deck, u.moving(),
@@ -35,6 +35,13 @@ inline void probe_world(const World& w) {
                 u.bales_ore, u.bales_gems, u.w7.slave_manager, u.cargo_of, u.target, u.target_building);
             note("COMBAT unit=%zu house=%d damage=%d range=%.3f slot=%d explicit=%d opportunity=%d frame=%d sequence=%d stage=%d",
                 i,u.house,u.w_damage,u.w_range,u.w_active,u.attack_order,u.tg.opportunity,u.frame,u.ia.seq,u.ia.stage);
+            if(u.deployed || u.deploy_fire || u.abil.deployer)
+                note("DEPLOY_FIRE unit=%zu deployed=%d post=%d area_owner=%d rad=%d frozen=%d primary_aa=%d secondary_aa=%d",
+                    i,u.deployed,u.deploy_fire,deployment_owns_fire(u),u.abil.deploy.rad_level,u.frozen,u.p_aa,u.w2.aa);
+            if(u.an.t.missile)note("MISSILE unit=%zu kind=%d phase=%d age=%d altitude=%.3f pitch=%.3f owner=%d",
+                i,u.an.t.rocket_kind,u.an.rocket.phase,u.an.rocket.frames,u.altitude,u.an.rocket.pitch,u.an.owner);
+            if(u.an.t.spawns_number>0)note("LAUNCHER unit=%zu ready=%d out=%d pending=%d target=%d building=%d",
+                i,u.an.spawn_ready,u.an.spawn_out,u.an.spawn_pending,u.an.sp_tgt_unit,u.an.sp_tgt_bld);
             note("ACQUIRE unit=%zu mission=%d area_guard=%d home=%d,%d guard_range=%.3f sight=%d scan_left=%d frozen=%d passive_disabled=%d approach=%d retaliate_disabled=%d",
                 i,w.unit_mission(u),u.tg.area_guard,u.tg.home_x,u.tg.home_y,u.tg.t.guard_range,u.sight,
                 u.tg.scan_timer,u.frozen,u.abil.no_passive_acquire || u.an.t.no_passive_acquire,
@@ -72,6 +79,7 @@ inline void probe_world(const World& w) {
                 if(stalled) {
                     const auto& occ=w.occupancy();
                     int blocker=occ.at(p.x,p.y,u.on_deck);
+                    if(blocker==static_cast<int>(i))blocker=-1;
                     if(blocker<0 && occ.subcells())
                         for(int spot=Occupancy::kFirstSpot;spot<Occupancy::kFirstSpot+Occupancy::kSpots;++spot) {
                             const int candidate=occ.spot_unit(p.x,p.y,spot,u.on_deck);
