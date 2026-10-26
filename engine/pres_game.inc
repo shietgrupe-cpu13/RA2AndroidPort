@@ -7,13 +7,14 @@
 class Presentation {
     bool miner_role_alerts_=true;
     std::map<std::string,double> gas_hull_top_;
+    std::set<std::pair<int,std::string>> muzzle_traced_;
 public:
     // side_ix: 0 Allied, 1 Soviet (Russian clips), 2 Yuri.
     void init(const std::string& dir, const ra2assets::MixFile& ra2, AudioSystem& audio, bool audio_on,
               const Rules& rules, const Ini& rules_ini, const Ini& art_ini,
               const std::vector<const std::vector<ra2engine::UnitTypeDef>*>& defs, int side_ix) {
         audio_ = &audio;
-        gas_hull_top_.clear();
+        gas_hull_top_.clear();muzzle_traced_.clear();
         const auto role_alert=read_settings_doc(settings_file_path()).get("Audio","MinerRoleAlerts");
         miner_role_alerts_=role_alert?ra2engine::ww_parse_bool(*role_alert,true):true;
         g_bld_events.clear();
@@ -269,6 +270,7 @@ public:
         for (std::size_t i = std::min(fire_seen_, fe.size()); i < fe.size(); ++i) fresh.push_back(fe[i]);
         fire_seen_ = fe.size();
         unit_fx_tick(w, fresh);
+        disc_laser_tick(w);
         defense_fire_tick(w, fresh);   // muzzle / beam / report on the tick of the shot
         disc_drain_tick(w);
         fragment_fx(w);                // W7-12-07 shrapnel beams
@@ -682,9 +684,9 @@ private:
     // [RE-FALLBACK: RE-P5 open -- AnimList pick] index = damage / 25, clamped
     // to the list (bigger hits -> later, larger anims).
     void impact(const ra2engine::Unit& shooter, int damage, double fx, double fy, int level,
-                double lift_px) {
+                double lift_px, const FxWeapon* known = nullptr) {
         // W7-12-30: the warhead of the weapon that fired (secondary / elite).
-        const FxWeapon* wp = world_ ? &fx_.weapon_fx(fired_weapon(*world_, shooter)) : fx_.weapon(shooter.image);
+        const FxWeapon* wp = known ? known : world_ ? &fx_.weapon_fx(fired_weapon(*world_, shooter)) : fx_.weapon(shooter.image);
         if (!wp || wp->anim_list.empty()) return;
         // W3-FX [RE: FUN_0048a400 SelectDamageAnimation]: a Conventional
         // warhead landing low on a water cell shows SplashList[min(damage,
@@ -866,6 +868,45 @@ private:
     // Muzzle Anim= at the firing point; an instant (no flying projectile)
     // weapon also lands its impact on the target now. W7-12-30: everything
     // comes from the weapon that fired.
+    void disc_laser_tick(const ra2engine::World& w) {
+        for(const auto& e:w.disk_state().events) {
+            if(e.source<0 || e.source>=int(w.units().size()))continue;
+            auto u=w.units()[e.source];u.w_active=0;
+            u.target=e.target;u.target_building=e.building;u.attack_cell_x=e.cell_x;u.attack_cell_y=e.cell_y;
+            u.w_damage=e.damage;
+            if(!e.weapon.empty())u.w_proj.weapon_id=e.weapon;
+            const auto wid=e.weapon.empty()?fired_weapon(w,u):e.weapon;
+            const auto& weapon=fx_.weapon_fx(wid);
+            double ox=0,lift=0;std::array<double,3> source{};
+            muzzle_point(w,u,ox,lift,&source);
+            const double cx=source[0]/256,cy=source[1]/256;
+            const int level=pres_unit_fx_level(w,u);
+            const double height=(source[2]-level*104.0)*kFxLepPx;
+            const auto ring=ra2engine::disk_charge_segments(e.start_dx,e.start_dy,e.phase);
+            const auto rim=ra2engine::disk_laser_rim(e.start_dx,e.start_dy);
+            if(e.phase==0) {
+                const auto charge=rules_ini_?pres_clean(rules_ini_->get("AudioVisual","DiskLaserChargeUp")):std::string();
+                snd_.play_at(pick_report(charge),cx+ring[0][0],cy+ring[0][1],"disc charge");
+            }
+            if(e.phase==8)snd_.play_at(pick_report(weapon.report),cx+rim[0],cy+rim[1],"disc discharge");
+            if(u.house!=g_local_house && !w.object_visible_at(g_local_house,u.cell_x,u.cell_y))continue;
+            auto line=weapon;line.disk=false;line.laser=true;
+            if(e.phase<8) {
+                line.laser_frames=8-e.phase;
+                for(int p=0;p<4;p+=2)
+                    fx_.add_beam(cx+ring[p][0],cy+ring[p][1],level,height,
+                        cx+ring[p+1][0],cy+ring[p+1][1],level,height,line,house_color(w,u.house));
+            } else {
+                double tx=0,ty=0,tl=0;int lev=0;
+                if(!target_point(w,e.target,e.building,tx,ty,lev,tl)) {
+                    if(e.cell_x<0 || e.cell_y<0)continue;
+                    tx=e.cell_x;ty=e.cell_y;lev=w.cell_level(e.cell_x,e.cell_y);
+                }
+                fx_.add_beam(cx+rim[0],cy+rim[1],level,height,tx,ty,lev,tl,line,house_color(w,u.house));
+                impact(u,e.damage,tx,ty,lev,tl,&weapon);
+            }
+        }
+    }
     void fire_fx(const ra2engine::World& w, const ra2engine::Unit& u) {
         const FxWeapon* wp = &fx_.weapon_fx(fired_weapon(w, u));
         if (wp->id.empty()) wp = fx_.weapon(u.image);
@@ -1308,6 +1349,18 @@ public:
             if (b.house != g_local_house && !w.object_visible_at(g_local_house, b.cx, b.cy)) continue;
             // W2-GA-15: Tesla Coil bolts / Prism Tower beams from the tower top.
             const FxWeapon& bw = fx_.weapon_def(e.weapon);
+            // Mobile guns already show the warhead impact for instant shots.
+            // Staged defenses previously emitted only their muzzle/report.
+            if(staged) {
+                const auto& shot=ra2engine::defense_event_weapon(w.btypes()[b.type],e.weapon,e.slot);
+                if(ra2engine::staged_defense_impact(true,w.projectiles_enabled(),shot)) {
+                    double x=0,y=0,lift=0;int level=0;
+                    bool target=target_point(w,e.target_unit,e.target_building,x,y,level,lift);
+                    if(!target && e.cell_x>=0 && e.cell_y>=0){x=e.cell_x;y=e.cell_y;level=w.cell_level(e.cell_x,e.cell_y);target=true;}
+                    if(target){ra2engine::Unit emitter;emitter.house=b.house;
+                        impact(emitter,shot.damage,x,y,level,lift,&bw);}
+                }
+            }
             if (bw.bolt || bw.laser) {
                 double tx = 0, ty = 0, tl = 0;
                 int tlev = 0;
@@ -1334,6 +1387,8 @@ public:
                 muzzle.body_facing=muzzle.turret_facing=b.def_turret_facing;
                 muzzle.w_active=e.slot;
                 muzzle.w6.burst_index=b.w6.burst_index;
+                if(b.type>=0 && b.type<int(w.btypes().size()))
+                    muzzle.w6.burst=ra2engine::defense_muzzle_burst(w.btypes()[b.type],e.weapon,e.slot);
                 if(b.type>=0 && b.type<static_cast<int>(w.btypes().size())) {
                     muzzle.gattling=w.btypes()[b.type].gattling;
                     muzzle.gattling.charge=b.gattling_charge;
@@ -1348,7 +1403,11 @@ public:
                 }
                 double ox=0,lift=0;
                 muzzle_point(w,muzzle,ox,lift);
-                fx_.spawn(m[ix], fx, fy, building_level(w, b), lift, ox);
+                const auto* spawned=fx_.spawn(m[ix], fx, fy, building_level(w, b), lift, ox,b.house);
+                if(ra2engine::diag::state().enabled.load() && muzzle_traced_.size()<128 &&
+                   muzzle_traced_.insert({e.building,e.weapon}).second)
+                    ra2engine::diag::note("MUZZLE building=%d weapon=%s anim=%s spawned=%d burst=%d ox=%.2f lift=%.2f",
+                        e.building,e.weapon.c_str(),m[ix].c_str(),spawned!=nullptr,muzzle.w6.burst,ox,lift);
             }
         }
         for (std::size_t i=0;i<bs.size();++i) {
@@ -1529,6 +1588,7 @@ private:
             for(unsigned shot=0;shot<count && u.cargo_of<0;++shot) {
                 // W7-03-06 / W7-12-30: the FIRED weapon's Report (IFV modes,
                 // deployed GI Para / GGI MissileLauncher, elite weapons).
+                if(w.disc_laser_weapon(u)) continue; // retained owner emits charge/report/discharge
                 const std::string wid = fired_weapon(w, u);
                 const std::string rep = wid.empty() ? v.report : fx_.weapon_fx(wid).report;
                 const std::string report=pick_report(rep);

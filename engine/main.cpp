@@ -62,6 +62,7 @@ ra2engine::ProjectilePresentation g_projectile_motion;
 #include "gas_emitter.hpp"
 #include "debug_ai.hpp"
 #include "disk_laser.hpp"
+#include "defense_muzzle.hpp"
 ra2engine::UnitPresentation g_unit_motion;
 #include "shell_layout.hpp"
 #include "ra2assets/asset_trace.hpp"
@@ -1477,6 +1478,7 @@ ra2engine::AbilityRules resolve_ability_rules(const Rules& rules, const Ini& ini
 void wire_abilities(ra2engine::World& world, const Rules& rules, const Ini& ini) {
     world.set_ability_rules(resolve_ability_rules(rules, ini));
     world.configure_disc_drain(rules);
+    world.configure_disc_laser(rules);
     world.configure_chaos(rules,ini);
     std::vector<std::string> ids = {"DRON", "DESO", "CLEG", "TANY", "GHOST", "IVAN", "TERROR", "FV"};
     // W2-SK-17/18: the Demolition Truck (Suicide Demobomb + DeathWeapon), the
