@@ -4501,6 +4501,20 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
     // pick the SHP by the unit's own image ("GI"/"CONS"). An unrecognized
     // image is logged and skipped (not thrown) so one bad unit can't take
     // down the whole frame.
+    // Classify the lip/deck using the pose that will actually be drawn, not
+    // the next fixed simulation position. This keeps occlusion in phase.
+    auto bunker_xy = [&](int idx) {
+        const auto& u=us[idx];
+        auto xy=u.garrison_of<0?g_unit_motion.position(idx,u,g_pres_render_fraction):std::array<double,2>{u.fx,u.fy};
+        const auto it=g_bunker_motion.find(idx);
+        if(it!=g_bunker_motion.end() && ra2engine::transition_active(it->second.start,it->second.duration,g_pres_tick)) {
+            const auto& m=it->second;
+            const double f=ra2engine::bunker_drive_fraction(g_pres_tick-m.start,m.drive,m.delay,g_pres_render_fraction);
+            xy={m.from_x+((m.entering?m.to_x:u.fx)-m.from_x)*f,
+                m.from_y+((m.entering?m.to_y:u.fy)-m.from_y)*f};
+        }
+        return xy;
+    };
     auto bunker_render_host = [&](int idx) {
         const auto& u=us[idx];
         const int bi=u.garrison_of>=0?u.garrison_of:u.bunker_exit_host>=0?u.bunker_exit_host:u.occupy_target;
@@ -4508,7 +4522,8 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
         const auto& b=world.buildings()[bi];
         if(!b.alive || b.state!=ra2engine::Building::State::Idle || b.type<0 || b.type>=int(ba->roster.size()) ||
            !ba->roster[b.type].tank_bunker)return -1;
-        return u.garrison_of>=0 || ra2engine::bunker_contains_vehicle(u.fx,u.fy,b.cx,b.cy,b.fw,b.fh)?bi:-1;
+        const auto xy=bunker_xy(idx);
+        return u.garrison_of>=0 || ra2engine::bunker_contains_vehicle(xy[0],xy[1],b.cx,b.cy,b.fw,b.fh)?bi:-1;
     };
     auto draw_one_unit = [&](int idx, const ra2engine::Building* bunker = nullptr) {
         if(!bunker && bunker_render_host(idx)>=0)return;
@@ -4808,30 +4823,23 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
                 for (int ui : b.occupants)
                     if (ui>=0 && ui<static_cast<int>(us.size()) && us[ui].alive)
                         draw_one_unit(ui,&b);
-                // Approaching and physically departing vehicles must use the
-                // same rear/vehicle/front pass while crossing the foundation.
-                for(int ui=0;ui<int(us.size());++ui)
-                    if(us[ui].alive && us[ui].garrison_of<0 && bunker_render_host(ui)==d.idx &&
-                       !ra2engine::bunker_vehicle_in_front(us[ui].fx,us[ui].fy,b.cx,b.cy,b.fw,b.fh))
-                        draw_one_unit(ui,&b);
-                // Keep an exiting tank in the same rear/tank/front layering
-                // until it clears the bunker instead of popping in front.
-                std::vector<int> exiting_units;
-                for (const auto& motion:g_bunker_motion)
-                    if (!motion.second.entering && motion.second.building==d.idx &&
-                        ra2engine::transition_active(motion.second.start,motion.second.duration,g_pres_tick))
-                        exiting_units.push_back(motion.first);
-                for (int ui:exiting_units)
-                    if(ui>=0 && ui<static_cast<int>(us.size()) && us[ui].alive && us[ui].garrison_of<0)
-                        draw_one_unit(ui,&b);
+                // One collection owns both physical passage and legacy visual
+                // ejection; a unit matching both must never be drawn twice.
+                std::vector<int> passage;
+                for(int ui=0;ui<int(us.size());++ui) {
+                    if(!us[ui].alive || us[ui].garrison_of>=0)continue;
+                    const auto motion=g_bunker_motion.find(ui);
+                    const bool visual_exit=motion!=g_bunker_motion.end() && !motion->second.entering &&
+                        motion->second.building==d.idx &&
+                        ra2engine::transition_active(motion->second.start,motion->second.duration,g_pres_tick);
+                    if(bunker_render_host(ui)==d.idx || visual_exit)passage.push_back(ui);
+                }
+                auto in_front=[&](int ui){const auto xy=bunker_xy(ui);
+                    return ra2engine::bunker_vehicle_in_front(xy[0],xy[1],b.cx,b.cy,b.fw,b.fh);};
+                for(int ui:passage)if(!in_front(ui))draw_one_unit(ui,&b);
                 pres_tank_bunker_overlay(ren, tc, b, image, cx, cy, ba->condition_yellow,
                                          pal, ckey, W, H, true);
-                // Once the moving body crosses the platform's front half it
-                // must occlude the lowered lip, rather than pass beneath it.
-                for(int ui=0;ui<int(us.size());++ui)
-                    if(us[ui].alive && us[ui].garrison_of<0 && bunker_render_host(ui)==d.idx &&
-                       ra2engine::bunker_vehicle_in_front(us[ui].fx,us[ui].fy,b.cx,b.cy,b.fw,b.fh))
-                        draw_one_unit(ui,&b);
+                for(int ui:passage)if(in_front(ui))draw_one_unit(ui,&b);
             }
         } else if (d.kind == 4) {
             const auto fx = g_slave_miner_pack_fx.find(d.idx);

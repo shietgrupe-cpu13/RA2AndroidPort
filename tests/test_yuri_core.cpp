@@ -1233,6 +1233,18 @@ TEST_CASE("Unit presentation: interpolate display rates without changing simulat
  motion.apply(0,draw,0);CHECK(draw.fx==15.2);motion.clear();draw.fx=20;motion.apply(0,draw,0);CHECK(draw.fx==20);
 }
 
+TEST_CASE("Tank Bunker: occlusion follows the displayed crossing pose rather than the next tick") {
+ Rig r;World w(r.map);auto c=unit("LTNK");c.is_vehicle=true;w.add_combat_unit(8,8,0,c);
+ UnitPresentation motion;motion.capture(w.units());w.units()[0].fx=9;w.units()[0].fy=9;motion.capture(w.units());
+ const auto saved=save::save_world(w);
+ const auto previous=motion.position(0,w.units()[0],0),current=motion.position(0,w.units()[0],1);
+ CHECK_FALSE(bunker_vehicle_in_front(previous[0],previous[1],8,8,2,2));
+ CHECK(bunker_vehicle_in_front(current[0],current[1],8,8,2,2));
+ for(double fraction:{0.0,0.25,0.5,0.75,1.0}) {
+  auto draw=w.units()[0];motion.apply(0,draw,fraction);const auto xy=motion.position(0,w.units()[0],fraction);
+  CHECK(xy[0]==draw.fx);CHECK(xy[1]==draw.fy);CHECK(save::save_world(w)==saved);
+ }
+}
 TEST_CASE("Slave Miner: planned legal ore site drives and deploys quietly across save load") {
  Rig r;World w(r.map);BuildingTypeDef d;d.id="YAREFN";d.fw=d.fh=2;d.strength=500;d.slave_count=2;
  d.slave_combat=unit("SLAV");w.set_economy({d},{0},OreValues{},1000,0,0);
