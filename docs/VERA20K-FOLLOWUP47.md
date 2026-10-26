@@ -128,6 +128,9 @@ guard. Final full native suite passed1304 cases/278003 assertions. The first ful
 run found a stale test that rejected the now-valid format58; the assertion now
 checks rejection of the next unknown version and explicitly accepts57.
 Build/signing/Drive results are recorded separately after completion.
+The first Android compile caught a helper included inside main.cpp's anonymous
+namespace. Its include was moved to the global header block; this build failure
+is retained in test47-apk-build.log, not represented as a successful build.
 One unavailable landmark fixture remains excluded; optional foreign oracle corpora
 may early-return. No emulator, phone, GPU, audio listening or thermal test was run.
 The synthetic economy test is not a complete retail three-faction AI playtest;

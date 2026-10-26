@@ -60,6 +60,7 @@ ra2engine::ProjectilePresentation g_projectile_motion;
 #include "faction_art.hpp"
 #include "sidebar_assets.hpp"
 #include "gas_emitter.hpp"
+#include "debug_ai.hpp"
 #include "disk_laser.hpp"
 ra2engine::UnitPresentation g_unit_motion;
 #include "shell_layout.hpp"

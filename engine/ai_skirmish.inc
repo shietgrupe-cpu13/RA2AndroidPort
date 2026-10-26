@@ -18,7 +18,6 @@
 // Prerequisites are FULL-parsed from rulesmd (APOC needs NATECH, V3 needs
 // NARADR, ...), so a house builds only what its base allows; each house's
 // share is filtered by Owner/RequiredHouses/ForbiddenHouses (ai_side_catalog).
-#include "debug_ai.hpp"
 UnitRoster load_ai_skirmish_roster(const std::string& dir, const ra2assets::MixFile& ra2,
                                    const UnitAssets& ua, const Rules& rules, const Art& art) {
     load_progress("AI ROSTER");   // W2-AR-02 loading-screen checkpoint
