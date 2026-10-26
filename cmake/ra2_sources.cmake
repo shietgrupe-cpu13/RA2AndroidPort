@@ -160,6 +160,7 @@ set(RA2_ENGINE_SOURCES
     ${RA2_ROOT}/engine/world_w5.cpp
     ${RA2_ROOT}/engine/world_w6.cpp
     ${RA2_ROOT}/engine/world_w7.cpp
+    ${RA2_ROOT}/engine/world_disk.cpp
     ${RA2_ROOT}/engine/world_drain.cpp
     ${RA2_ROOT}/engine/world_chaos.cpp
     ${RA2_ROOT}/engine/abil_w5_rules.cpp

@@ -168,6 +168,7 @@ void try_fire(const World& world, std::vector<Unit>& units, std::vector<Building
                     unit_lept_x(u),unit_lept_y(u),unit_lept_z(u));
         return;
     }
+    if(world.queue_disc_laser(attacker_idx,victim_idx,-1)) return;
     // W2-AN-12 [rules Spawner=yes: HornetLauncher/ASWLauncher/DredLauncher/
     // V3Launcher]: the "shot" launches a spawned aircraft/missile at the
     // victim (World::step_air_naval) -- the launcher weapon itself deals no damage.
@@ -1339,6 +1340,7 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
                             u.an.spawn_fire_building = b_idx;
                             continue;
                         }
+                        if(world.queue_disc_laser(i,-1,b_idx)) continue;
                         // P2 firewall: a flying projectile defers the hit to
                         // World::step_projectiles; otherwise the pre-P2 tail.
                         if (launches && u.w_proj.flies())
@@ -1522,6 +1524,7 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
                             unit_lept_x(u),unit_lept_y(u),unit_lept_z(u));
                         continue;
                     }
+                    if(world.queue_disc_laser(i,-1,-1,u.attack_cell_x,u.attack_cell_y)) continue;
                     u.cell_shot = true;
                 }
             } else if (!u.moving()) {

@@ -420,6 +420,25 @@ struct Unit {
     UnitW7 w7;                       // wave-7 fix (units): unit_w7.hpp (save v35)
     Gattling gattling;
 };
+// A retained DiskLaser shot owns its captured weapon profile, not a projectile.
+struct DiskShot {
+    int source=-1,target=-1,building=-1,cell_x=-1,cell_y=-1;
+    int phase=0,wait=0;
+    int start_dx=0,start_dy=0;
+    Unit weapon;
+};
+struct DiskEvent {
+    int source=-1,target=-1,building=-1,cell_x=-1,cell_y=-1,phase=0;
+    std::string weapon;
+    int damage=0;
+    int start_dx=0,start_dy=0;
+};
+struct DiskState {
+    bool enabled=false;
+    std::map<std::string,bool> sources;
+    std::vector<DiskShot> shots;
+    std::vector<DiskEvent> events; // presentation feed, excluded from gameplay hashes
+};
 // G16: the cargo_of sentinel of a garrisoned infantry (never a unit index).
 constexpr int kGarrisonCargo = 0x3FFFFFFF;
 // NET L1: an issuer that may order any house's units (the non-interactive
@@ -2146,6 +2165,11 @@ public:
         return (house >= 0 && house < house_count()) ? blackout_frames_[house] : 0;
     }
     bool house_blacked_out(int house) const { return blackout_frames(house) > 0 || house_disc_drained(house); }
+    void configure_disc_laser(const ra2assets::Rules&);
+    bool disc_laser_weapon(const Unit&) const;
+    bool queue_disc_laser(int source,int target,int building,int cell_x=-1,int cell_y=-1) const;
+    void step_disc_lasers();
+    const DiskState& disk_state() const { return disk_; }
     void configure_disc_drain(const ra2assets::Rules& rules);
     bool disc_drain_order(const Unit& u, int building) const;
     bool building_disc_drained(int building) const;
@@ -3132,6 +3156,7 @@ private:
     std::vector<HitRec> w7_hits_;   // the hit log (combat.hpp), drained by step_missions_w7
     DrainState drain_;
     mutable ChaosState chaos_;
+    mutable DiskState disk_;
     ElevationRules elev_rules_;   // W5-B R-063
     AnimTable anims_;  // Unit::image -> UnitAnimSeq (set_anim); unregistered -> default_anim()
     bool inf_anims_ = false;                       // W3-B

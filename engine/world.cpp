@@ -6035,6 +6035,7 @@ void World::step(double dt) {
     // nullptr keeps step_combat's instant-hit path byte-identical.
     std::vector<ProjectileLaunch> launches;
     prepare_skirmish_mind_control();
+    step_disc_lasers();
     step_disc_drains();
     step_chaos_timers(dt);
     const std::vector<MoveRequest> reqs = step_combat(*this, units_, buildings_, occ_, dt,

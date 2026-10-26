@@ -294,7 +294,7 @@ target_sources(ra2assets_tests PRIVATE tests/test_roster2.cpp engine/roster2.cpp
 # the radiation field (engine/abilities.cpp, World-free) and the World-side
 # ability pass + orders (engine/world_abilities.cpp, a World member TU split out
 # of world.cpp), exercised by test_abilities.cpp.
-target_sources(ra2assets_tests PRIVATE engine/world_chaos.cpp tests/test_chaos.cpp)
+target_sources(ra2assets_tests PRIVATE engine/world_disk.cpp engine/world_chaos.cpp tests/test_chaos.cpp)
 target_sources(ra2assets_tests PRIVATE tests/test_abilities.cpp tests/test_abilities_world.cpp engine/abilities.cpp engine/world_abilities.cpp engine/world_w5.cpp engine/world_w6.cpp engine/world_w7.cpp engine/world_drain.cpp tests/test_w6_missions.cpp tests/test_w7_combat.cpp engine/abil_w5_rules.cpp tests/test_abil_w5.cpp engine/world_mcv.cpp tests/test_mcv_deploy.cpp
                  engine/world_sw.cpp engine/world_an.cpp engine/ai_unit.cpp tests/test_ai_w7.cpp)
 target_sources(ra2assets_tests PRIVATE tests/test_w7r2.cpp)   # w7r2: wave-7 mission-script restore fixes

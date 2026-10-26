@@ -354,6 +354,14 @@ bool SaveAccess::valid_world(const World& w, std::string* why) {
     for(const auto& s:w.chaos_.pending)
         if(s.first<0 || s.first>=nu || s.second<=0)return bad("chaos pending hit");
     for(int c:w.chaos_.tint)if(c<0 || c>255)return bad("chaos tint");
+    if(!w.disk_.enabled && !w.disk_.shots.empty())return bad("disabled disk controller");
+    if(w.disk_.shots.size()>4096)return bad("disk shot count");
+    for(const auto& s:w.disk_.shots) {
+        if(s.source<0 || !unit_ix(s.source) || !unit_ix(s.target) || !bld_ix(s.building) ||
+           s.phase<0 || s.phase>8 || s.wait<0 || s.wait>1)return bad("disk shot");
+        if(s.target<0 && s.building<0 && (s.cell_x<0 || s.cell_y<0 || s.cell_x>=gw || s.cell_y>=gh))
+            return bad("disk target cell");
+    }
     std::set<int> drain_sources;
     for(const auto& d:w.drain_.links)
         if(d.unit<0 || d.unit>=nu || d.building<0 || d.building>=nb ||

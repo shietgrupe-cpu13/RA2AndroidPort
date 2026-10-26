@@ -8,6 +8,8 @@
 #include <chrono>
 #include "debug_ai.hpp"
 #include "gas_emitter.hpp"
+#include "disk_laser.hpp"
+#include "defense_muzzle.hpp"
 #include "skirmish_lobby.hpp"
 using ra2assets::Rules;
 #include "../engine/ai_side_catalog.inc"
@@ -105,6 +107,94 @@ TEST_CASE("Chaos vent: render-only centre top follows slope projection") {
  const auto flat=gas_vent_projection(20.871,0);CHECK(flat[0]==0);CHECK(flat[1]==doctest::Approx(20.871*kIsoZ));
  for(int ramp=1;ramp<=16;++ramp){const auto p=gas_vent_projection(20.871,ramp);CHECK(std::isfinite(p[0]));CHECK(p[1]>0);}
  CHECK(gas_vent_projection(-1,0)[1]==0);
+}
+namespace {
+void disk_setup(World& w) {
+ const auto ini=ra2assets::Ini::parse("[VehicleTypes]\n0=DISK\n[DISK]\nPrimary=DiskLaser\n[DiskLaser]\nDiskLaser=yes\n");
+ w.configure_disc_laser(Rules::load(ini));
+ auto c=type("DISK",90);c.range=7;c.primary_aa=true;c.proj.weapon_id="DiskLaser";
+ w.add_combat_unit(10,10,0,c);w.add_combat_unit(12,10,1,type("TARGET"));
+}
+}
+TEST_CASE("Disc charge: eight spaced emissions precede one authoritative discharge") {
+ ChaosRig r;World w(r.map);disk_setup(w);REQUIRE(w.queue_disc_laser(0,1,-1));
+ int charge=0,discharge=0;
+ for(int tick=1;tick<=17;++tick) {
+  w.step_disc_lasers();
+  for(const auto& e:w.disk_state().events){charge+=e.phase<8;discharge+=e.phase==8;}
+  CHECK(w.units()[1].hp==(tick<17?1000:910));
+ }
+ CHECK(charge==8);CHECK(discharge==1);CHECK(w.disk_state().shots.empty());
+ w.step_disc_lasers();CHECK(w.units()[1].hp==910);CHECK(w.disk_state().events.empty());
+}
+TEST_CASE("Disc charge: tracks the original target through movement and source retargeting") {
+ ChaosRig r;World w(r.map);disk_setup(w);REQUIRE(w.queue_disc_laser(0,1,-1));
+ w.add_combat_unit(16,10,1,type("OTHER"));
+ auto& units=const_cast<std::vector<Unit>&>(w.units());units[0].target=2;units[1].fx=13;
+ for(int tick=0;tick<17;++tick)w.step_disc_lasers();
+ CHECK(w.units()[1].hp==910);CHECK(w.units()[2].hp==1000);
+}
+TEST_CASE("Disc charge: range expiry, death and crashes cancel damage") {
+ for(int mode=0;mode<4;++mode){ChaosRig r;World w(r.map);disk_setup(w);REQUIRE(w.queue_disc_laser(0,1,-1));
+  auto& units=const_cast<std::vector<Unit>&>(w.units());
+  if(mode==0)units[1].fx=29;
+  if(mode==1)units[0].alive=false;
+  if(mode==2)units[1].alive=false;
+  if(mode==3)units[0].an.crashing=true;
+  for(int tick=0;tick<18;++tick)w.step_disc_lasers();
+  CHECK(w.units()[1].hp==1000);CHECK(w.disk_state().shots.empty());
+ }
+}
+TEST_CASE("Disc charge: actual combat queues a retained shot instead of immediate damage") {
+ ChaosRig r;World w(r.map);disk_setup(w);
+ auto& u=const_cast<Unit&>(w.units()[0]);u.target=1;u.attack_order=true;u.omni_fire=true;
+ w.step(1.0/15);CHECK(w.units()[1].hp==1000);REQUIRE(w.disk_state().shots.size()==1);
+ for(int i=0;i<16;++i){w.step(1.0/15);CHECK(w.units()[1].hp==1000);}
+ w.step(1.0/15);CHECK(w.units()[1].hp==910);
+}
+TEST_CASE("Disc charge: airborne targets and ground force fire discharge through the existing receiver") {
+ for(bool air:{false,true}){ChaosRig r;World w(r.map);disk_setup(w);
+  if(air){auto& v=const_cast<Unit&>(w.units()[1]);v.is_aircraft=true;v.altitude=256;REQUIRE(w.queue_disc_laser(0,1,-1));}
+  else REQUIRE(w.queue_disc_laser(0,-1,-1,12,10));
+  for(int i=0;i<17;++i)w.step_disc_lasers();CHECK(w.units()[1].hp==910);
+ }
+}
+TEST_CASE("Disc charge: building discharge retains its original target and weapon") {
+ ChaosRig r;World w(r.map);disk_setup(w);BuildingTypeDef b;b.id="TEST";b.strength=1000;b.fw=b.fh=2;
+ w.set_economy({b},{},OreValues{},1000,0,0);w.add_building(0,13,10,2,2,1,1000,0,0,true);
+ REQUIRE(w.queue_disc_laser(0,-1,0));for(int i=0;i<16;++i){w.step_disc_lasers();CHECK(w.buildings()[0].hp==1000);}
+ w.step_disc_lasers();CHECK(w.buildings()[0].hp==910);
+}
+TEST_CASE("Disc charge: save-load preserves phase, captured damage and deterministic continuation") {
+ ChaosRig r;World w(r.map);disk_setup(w);REQUIRE(w.queue_disc_laser(0,1,-1));
+ for(int i=0;i<6;++i)w.step_disc_lasers();
+ const_cast<Unit&>(w.units()[0]).w_damage=999;World loaded(r.map);
+ REQUIRE(save::load_world(loaded,save::save_world(w)));
+ for(int i=0;i<14;++i){w.step_disc_lasers();loaded.step_disc_lasers();CHECK(save::save_world(w)==save::save_world(loaded));}
+ CHECK(loaded.units()[1].hp==910);
+ auto& state=const_cast<DiskState&>(loaded.disk_state());DiskShot bad;bad.source=999;state.shots.push_back(bad);
+ CHECK_FALSE(save::load_world(loaded,save::save_world(loaded)));
+}
+TEST_CASE("Disc charge: old state migration clears retained shots and ordinary guns bypass it") {
+ ChaosRig r;World old(r.map),w(r.map);disk_setup(w);REQUIRE(w.queue_disc_laser(0,1,-1));
+ REQUIRE(save::load_world(w,save::save_world(old)));CHECK(w.disk_state().shots.empty());
+ CHECK(w.disk_state().enabled);CHECK_FALSE(w.queue_disc_laser(999,1,-1));
+ old.add_combat_unit(10,10,0,type("TANK",90));CHECK_FALSE(old.queue_disc_laser(0,1,-1));
+}
+TEST_CASE("Disc charge display: independent ring segments stay on the original radius") {
+ for(int stage=0;stage<8;++stage)for(const auto& p:disk_charge_segments(3,-2,stage))
+  CHECK(std::hypot(p[0],p[1])==doctest::Approx(240.0/256));
+}
+TEST_CASE("Gatling defense muzzle: staged weapon burst is shared with the mobile projection") {
+ BuildingTypeDef t;t.gattling.weapons.resize(6);
+ for(int i=0;i<6;++i){t.gattling.weapons[i].id="W"+std::to_string(i);t.gattling.weapons[i].burst=1+i/2;}
+ for(int i=0;i<6;++i)CHECK(defense_muzzle_burst(t,"W"+std::to_string(i),i%2)==1+i/2);
+ t.weapon[1].burst=4;CHECK(defense_muzzle_burst(t,"ordinary",1)==4);
+ WeaponSlot instant;CHECK(staged_defense_impact(true,true,instant));
+ CHECK_FALSE(staged_defense_impact(false,true,instant));
+ instant.proj.kind=ProjKind::Ballistic;
+ CHECK_FALSE(staged_defense_impact(true,true,instant));
+ CHECK(staged_defense_impact(true,false,instant));
 }
 TEST_CASE("Chaos: deploy is a self-centered status blast without HP damage") {
  ChaosRig rig;World w(rig.map);configure(w);drone(w);
