@@ -22,6 +22,7 @@ public:
         speech_cooldown_.clear();
         g_projectile_motion.clear();
         g_unit_motion.clear();
+        g_building_motion.clear();
         g_pres_crushed.clear();  // W7-04-25
         g_pres_sinkers.clear();  // W7-12-11
         g_pres_tick = 0;        // W3-B: the logic-tick anim clock restarts per game
@@ -260,6 +261,7 @@ public:
                     const std::vector<ra2engine::ProjectileEvent>& pev) {
         g_projectile_motion.capture(w.projectiles(),pev);
         g_unit_motion.capture_world(w);
+        g_building_motion.capture(w.buildings());
         g_pres_tick = ++logic_;
         fx_.tick();
         pres_state_tick(w, fx_);   // W5-PRES R-120 chrono warp anims / sparkles

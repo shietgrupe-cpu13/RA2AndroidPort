@@ -80,7 +80,8 @@ public:
         // W5-PRES R-121: the SIM's turret facing (Building::def_turret_facing,
         // slewed at the type's ROT by step_building_combat, voxel-render.md §5)
         // instead of snapping to the target direction.
-        const double f = b.def_turret_facing;
+        const auto index=static_cast<std::size_t>(&b-w.buildings().data());
+        const double f = g_building_motion.turret(index,b,g_pres_render_fraction);
         const int key = ra2engine::house_draw_key(b.house);
         auto& slot = t.sets[key];
         if (!slot) {

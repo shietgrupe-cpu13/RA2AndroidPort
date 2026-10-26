@@ -208,6 +208,27 @@ TEST_CASE("missile launchers: explicit V3 and Boomer land orders launch spawned 
         CHECK(w.units()[2].an.t.missile);CHECK(w.units()[2].an.owner==0);
     }
 }
+TEST_CASE("Bunker presentation: approach offset has no foundation-edge jump") {
+ for(int axis=0;axis<8;++axis) {
+  const double angle=axis*3.141592653589793/4;
+  const double x=10+std::cos(angle)*0.7,y=10+std::sin(angle)*0.7;
+  CHECK(bunker_render_passage(x,y,10,10,2,2));
+ }
+ CHECK(bunker_platform_offset(10,10,10,10,2,2)==doctest::Approx(0.5));
+ CHECK(bunker_platform_offset(9,10,10,10,2,2)==0);
+ CHECK(bunker_platform_offset(9.0001,10,10,10,2,2)<0.000001);
+ CHECK(bunker_platform_offset(9.9999,10,10,10,2,2)>0.499999);
+ CHECK(bunker_render_passage(9.4999,10,10,10,2,2));
+ CHECK(bunker_render_passage(9.5001,10,10,10,2,2));
+}
+TEST_CASE("Turret presentation: shortest turn is smooth and ownership changes cut history") {
+ std::vector<Building> buildings(1);auto& b=buildings[0];b.alive=true;b.state=Building::State::Idle;
+ b.type=0;b.house=0;b.def_turret_facing=65000;
+ BuildingPresentation motion;motion.capture(buildings);b.def_turret_facing=536;motion.capture(buildings);
+ CHECK(motion.turret(0,b,0)==65000);CHECK(motion.turret(0,b,0.5)==doctest::Approx(0));
+ CHECK(motion.turret(0,b,1)==536);b.house=1;CHECK(motion.turret(0,b,0)==536);
+ motion.clear();CHECK(motion.turret(0,b,0.5)==536);
+}
 TEST_CASE("diagnostics: unit probes preserve saved state and catch broken references") {
     Rig r; World w(r.map);
     w.add_combat_unit(2,2,0,unit("SLAV"));

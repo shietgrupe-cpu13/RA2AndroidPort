@@ -14,10 +14,17 @@ inline std::array<int,2> bunker_docking_cell(int cx,int cy,int fw,int fh) {
 // so crossing between live locomotion and an attached occupant cannot snap.
 inline double bunker_platform_offset(double x,double y,int cx,int cy,int fw,int fh) {
     const auto dock=bunker_docking_cell(cx,cy,fw,fh);
-    return 0.5*std::clamp(1.0-std::hypot(x-dock[0],y-dock[1]),0.0,1.0);
+    const double t=std::clamp(1.0-std::hypot(x-dock[0],y-dock[1]),0.0,1.0);
+    return 0.5*t*t*(3-2*t);
 }
 inline bool bunker_contains_vehicle(double x,double y,int cx,int cy,int fw,int fh) {
     return x>=cx-0.5 && y>=cy-0.5 && x<cx+fw-0.5 && y<cy+fh-0.5;
+}
+inline bool bunker_render_passage(double x,double y,int cx,int cy,int fw,int fh) {
+    // Own the entire display-offset support, including the near-side approach
+    // outside the foundation. Otherwise the first inside frame jumps by the
+    // already nonzero platform offset. This does not expand collision space.
+    return bunker_contains_vehicle(x,y,cx,cy,fw,fh) || bunker_platform_offset(x,y,cx,cy,fw,fh)>0;
 }
 inline bool bunker_vehicle_in_front(double x,double y,int cx,int cy,int fw,int fh) {
     const double offset=bunker_platform_offset(x,y,cx,cy,fw,fh);

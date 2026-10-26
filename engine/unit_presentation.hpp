@@ -61,4 +61,24 @@ public:
         draw.body_facing=angle(a.body,b.body);draw.turret_facing=angle(a.turret,b.turret);
     }
 };
+class BuildingPresentation {
+    struct Pose {double facing;int type,house,x,y;bool live;};
+    std::vector<Pose> current_,previous_;
+public:
+    void clear(){current_.clear();previous_.clear();}
+    void capture(const std::vector<Building>& buildings) {
+        previous_.swap(current_);current_.clear();current_.reserve(buildings.size());
+        for(const auto& b:buildings)current_.push_back({b.def_turret_facing,b.type,b.house,b.cx,b.cy,
+            b.alive && b.state==Building::State::Idle});
+    }
+    double turret(std::size_t id,const Building& b,double fraction) const {
+        if(id>=previous_.size() || id>=current_.size())return b.def_turret_facing;
+        const auto& a=previous_[id];const auto& c=current_[id];
+        if(!a.live || !c.live || !b.alive || b.state!=Building::State::Idle || a.type!=c.type ||
+           a.house!=c.house || a.x!=c.x || a.y!=c.y || c.type!=b.type || c.house!=b.house ||
+           c.x!=b.cx || c.y!=b.cy || c.facing!=b.def_turret_facing)return b.def_turret_facing;
+        return std::fmod(a.facing+std::remainder(c.facing-a.facing,65536.0)*
+            std::clamp(fraction,0.0,1.0)+65536.0,65536.0);
+    }
+};
 }

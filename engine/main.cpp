@@ -65,6 +65,7 @@ ra2engine::ProjectilePresentation g_projectile_motion;
 #include "defense_muzzle.hpp"
 #include "techno_status.hpp"
 ra2engine::UnitPresentation g_unit_motion;
+ra2engine::BuildingPresentation g_building_motion;
 #include "shell_layout.hpp"
 #include "ra2assets/asset_trace.hpp"
 #if defined(__ANDROID__) && !defined(RA2_ANDROID_CLI)
@@ -4524,7 +4525,7 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
         if(!b.alive || b.state!=ra2engine::Building::State::Idle || b.type<0 || b.type>=int(ba->roster.size()) ||
            !ba->roster[b.type].tank_bunker)return -1;
         const auto xy=bunker_xy(idx);
-        return u.garrison_of>=0 || ra2engine::bunker_contains_vehicle(xy[0],xy[1],b.cx,b.cy,b.fw,b.fh)?bi:-1;
+        return u.garrison_of>=0 || ra2engine::bunker_render_passage(xy[0],xy[1],b.cx,b.cy,b.fw,b.fh)?bi:-1;
     };
     auto draw_one_unit = [&](int idx, const ra2engine::Building* bunker = nullptr) {
         if(!bunker && bunker_render_host(idx)>=0)return;
