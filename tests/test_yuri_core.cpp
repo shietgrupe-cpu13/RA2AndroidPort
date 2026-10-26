@@ -232,8 +232,24 @@ TEST_CASE("diagnostics: unit probes preserve saved state and catch broken refere
     CHECK(log.find("blocked_over_3s=1")!=std::string::npos);
     CHECK(log.find("ROUTE unit=0 next=3,2")!=std::string::npos);
     CHECK(log.find("ground=0 air=1")!=std::string::npos);
+    CHECK(log.find("ACQUIRE unit=0 mission=")!=std::string::npos);
     worker.path_idx=900;
     diag::probe_world(w); // Invalid index must be reported without dereferencing it.
+}
+
+TEST_CASE("diagnostics: nearest enemy context reports fog and slot without changing the world") {
+ Rig r;World w(r.map);auto c=unit("BRUTE");c.damage=100;c.range=1.4;
+ w.add_combat_unit(8,8,0,c);w.add_combat_unit(11,8,1,unit("TARGET"));
+ w.units()[1].seen_by_mask=0;
+ const auto before=save::save_world(w);
+ const auto root=std::filesystem::temp_directory_path()/"ra2-acquire-probe";
+ struct Stop {~Stop(){diag::stop();}} stop;
+ REQUIRE(diag::start(root.u8string()));diag::probe_world(w);diag::flush();
+ CHECK(save::save_world(w)==before);
+ std::ifstream stream(root/"engine-current.log",std::ios::binary);
+ const std::string log{std::istreambuf_iterator<char>(stream),{}};
+ CHECK(log.find("ACQUIRE_CANDIDATE unit=0 candidate=1 image=TARGET distance=3.000 seen=0")!=std::string::npos);
+ CHECK(log.find("sampled=2 total=2")!=std::string::npos);
 }
 
 TEST_CASE("Yuri core: numbered Gatling guns retain ground and air weapons and auto-acquire") {
@@ -1255,4 +1271,60 @@ TEST_CASE("Traffic yield: blocked walking units accept forced clearance but reta
  w.order_scatter(0,true);REQUIRE(w.units()[0].moving());
  CHECK((w.units()[0].path.back().x!=15 || w.units()[0].path.back().y!=8));
  CHECK(std::max(std::abs(w.units()[0].path.back().x-8),std::abs(w.units()[0].path.back().y-8))==1);
+}
+
+TEST_CASE("Yuri idle guard: default Area Guard records its home before the combat scan") {
+ Rig r;World w(r.map);World::CombatW7Rules rules;rules.armed=true;w.arm_combat_w7(rules);
+ auto brute=unit("BRUTE");brute.is_infantry=true;brute.damage=100;brute.range=1.4;
+ brute.rof=60;brute.tg.guard_range=2;brute.w7.default_to_guard_area=true;
+ w.add_combat_unit(8,8,0,brute);
+ w.step(1.0/15);
+ CHECK(w.units()[0].tg.area_guard);
+ CHECK(w.units()[0].tg.home_x==8);CHECK(w.units()[0].tg.home_y==8);
+ // The anchor belongs to the idle transition, not a frame-by-frame chase reset.
+ w.units()[0].fx=9;w.units()[0].cell_x=9;w.step(1.0/15);
+ CHECK(w.units()[0].tg.home_x==8);
+ World copy(r.map);REQUIRE(save::load_world(copy,save::save_world(w)));
+ CHECK(copy.units()[0].tg.home_x==8);CHECK(copy.units()[0].tg.home_y==8);
+ for(int n=0;n<120;++n){w.step(1.0/15);copy.step(1.0/15);}
+ CHECK(save::save_world(w)==save::save_world(copy));
+ // Existing format-55 worlds can already carry the bad default guard state.
+ const int idle_x=w.units()[0].cell_x,idle_y=w.units()[0].cell_y;
+ w.units()[0].tg.home_x=w.units()[0].tg.home_y=-1;
+ REQUIRE(save::load_world(copy,save::save_world(w)));
+ copy.step(1.0/15);
+ CHECK(copy.units()[0].tg.home_x==idle_x);CHECK(copy.units()[0].tg.home_y==idle_y);
+}
+
+TEST_CASE("Yuri melee: visible guard targets are acquired and pursued without overriding Move") {
+ for(bool visible:{false,true}) {
+  Rig r;World w(r.map);World::CombatW7Rules rules;rules.armed=true;w.arm_combat_w7(rules);
+  auto brute=unit("BRUTE");brute.is_infantry=true;brute.damage=100;brute.range=1.4;
+  brute.rof=60;brute.tg.guard_range=2;brute.w7.default_to_guard_area=true;
+  auto victim=unit("TARGET");victim.strength=1000;
+  w.add_combat_unit(8,8,0,brute);w.add_combat_unit(11,8,1,victim);
+  w.units()[1].seen_by_mask=visible?0xFFFFFFFFu:0;
+  w.step(1.0/15);
+  if(visible) {CHECK(w.units()[0].target==1);CHECK(w.units()[0].moving());}
+  else {CHECK(w.units()[0].target==-1);CHECK_FALSE(w.units()[0].moving());}
+ }
+ Rig r;World w(r.map);World::CombatW7Rules rules;rules.armed=true;w.arm_combat_w7(rules);
+ auto brute=unit("BRUTE");brute.is_infantry=true;brute.damage=100;brute.range=1.4;
+ brute.tg.guard_range=2;brute.w7.default_to_guard_area=true;
+ w.add_combat_unit(8,8,0,brute);w.add_combat_unit(9,8,1,unit("TARGET"));
+ w.order_unit_move(0,8,15);w.step(1.0/15);
+ CHECK(w.units()[0].target==-1);REQUIRE(w.units()[0].moving());
+ CHECK(w.units()[0].path.back().y==15);
+}
+
+TEST_CASE("Yuri idle guard: special-unit passive acquisition remains disabled") {
+ for(const char* id:{"CAOS","TELE"}) {
+  Rig r;World w(r.map);World::CombatW7Rules rules;rules.armed=true;w.arm_combat_w7(rules);
+  auto c=unit(id);c.is_vehicle=true;c.damage=50;c.range=5;c.w7.default_to_guard_area=true;
+  c.an.no_passive_acquire=true;
+  w.add_combat_unit(8,8,0,c);w.add_combat_unit(9,8,1,unit("TARGET"));
+  for(int n=0;n<120;++n)w.step(1.0/15);
+  CHECK(w.units()[0].target==-1);CHECK_FALSE(w.units()[0].moving());
+  CHECK(w.units()[1].hp==100);
+ }
 }

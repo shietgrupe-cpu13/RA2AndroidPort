@@ -1,6 +1,7 @@
 #pragma once
 #include "diagnostics.hpp"
 #include "world.hpp"
+#include "weapon_unit.hpp"
 #include <cmath>
 namespace ra2engine::diag {
 // Read-only checks: never repair the simulation or consume its random stream.
@@ -26,7 +27,7 @@ inline void probe_world(const World& w) {
             if (invalid <= 8) note("CHECK unit=%zu invalid_slave_manager=%d", i, manager);
         }
         if (stalled) ++blocked;
-        const bool relevant = u.image == "SLAV" || u.image == "SMIN" || u.image == "YTNK" || u.image=="DISK" || u.image=="LTNK" || u.image=="BRUTE";
+        const bool relevant = u.image == "SLAV" || u.image == "SMIN" || u.image == "YTNK" || u.image=="DISK" || u.image=="LTNK" || u.image=="BRUTE" || u.image=="CAOS" || u.image=="TELE";
         if ((relevant || stalled) && emitted++ < 24) {
             note("UNIT unit=%zu image=%s cell=%d,%d pos=%.3f,%.3f level=%d deck=%d moving=%d path=%zu/%zu wait_s=%.3f harv=%d ore_target=%d,%d cargo=%.1f,%.1f slave_manager=%d transport=%d target=%d building_target=%d",
                 i, u.image.c_str(), u.cell_x, u.cell_y, u.fx, u.fy, u.level, u.on_deck, u.moving(),
@@ -34,6 +35,27 @@ inline void probe_world(const World& w) {
                 u.bales_ore, u.bales_gems, u.w7.slave_manager, u.cargo_of, u.target, u.target_building);
             note("COMBAT unit=%zu house=%d damage=%d range=%.3f slot=%d explicit=%d opportunity=%d frame=%d sequence=%d stage=%d",
                 i,u.house,u.w_damage,u.w_range,u.w_active,u.attack_order,u.tg.opportunity,u.frame,u.ia.seq,u.ia.stage);
+            note("ACQUIRE unit=%zu mission=%d area_guard=%d home=%d,%d guard_range=%.3f sight=%d scan_left=%d frozen=%d passive_disabled=%d approach=%d retaliate_disabled=%d",
+                i,w.unit_mission(u),u.tg.area_guard,u.tg.home_x,u.tg.home_y,u.tg.t.guard_range,u.sight,
+                u.tg.scan_timer,u.frozen,u.abil.no_passive_acquire || u.an.t.no_passive_acquire,
+                u.w6.t.can_approach_target,u.abil.no_retaliate);
+            // Report a candidate, not a diagnosis: distance alone does not
+            // establish acquisition legality. Bound work and never draw RNG.
+            int nearest=-1;double distance2=0;
+            const std::size_t limit=std::min<std::size_t>(units.size(),512);
+            for(std::size_t j=0;j<limit;++j) {
+                const auto& v=units[j];
+                if(j==i || !v.alive || v.die_time>=0 || v.cargo_of>=0 || !w.is_enemy(u.house,v.house))continue;
+                const double dx=v.fx-u.fx,dy=v.fy-u.fy,d=dx*dx+dy*dy;
+                if(nearest<0 || d<distance2){nearest=static_cast<int>(j);distance2=d;}
+            }
+            if(nearest>=0) {
+                const auto& v=units[nearest];
+                note("ACQUIRE_CANDIDATE unit=%zu candidate=%d image=%s distance=%.3f seen=%d hidden=%d disguise=%d legal_threat=%d weapon_slot=%d sampled=%zu total=%zu",
+                    i,nearest,v.image.c_str(),std::sqrt(distance2),v.seen_by_house(u.house),
+                    w.unit_hidden_from(u.house,v),w.disguise_fools(u.house,v),w.legal_threat_unit(u.house,v),
+                    unit_weapon_for_unit(u,v),limit,units.size());
+            }
             if(u.gattling.enabled()) {
                 const bool elite=is_elite(u.vet.veterancy);
                 note("GATTLING unit=%zu charge=%d stage=%d weapon=%s rof=%d",i,u.gattling.charge,

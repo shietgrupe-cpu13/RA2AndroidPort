@@ -148,9 +148,18 @@ void World::w7_step_deploy_timers() {
         // 0x737BB6]: a DefaultToGuardArea unit that falls idle (no move, no
         // target) enters Area_Guard on its spot. [RE-FALLBACK: the team
         // membership exception (+0x5D4) is not modelled here.]
-        if (u.w7.t.default_to_guard_area && !u.tg.area_guard && !u.is_aircraft && u.alive && u.die_time < 0.0 &&
+        if (u.w7.t.default_to_guard_area &&
+            (!u.tg.area_guard || u.tg.home_x < 0 || u.tg.home_y < 0) &&
+            !u.is_aircraft && u.alive && u.die_time < 0.0 &&
             u.cargo_of < 0 && !u.moving() && u.target < 0 && u.target_building < 0 && u.attack_cell_x < 0) {
             u.tg.area_guard = true;
+            // Area Guard pursuit/return uses tg.home, not the legacy guard
+            // anchor. This transition precedes enter_idle_mode(), which then
+            // sees area_guard and returns. Leaving home unset bypassed its
+            // leash and return path for default guards (including Brutes).
+            // Repair an unset anchor from older saves only once truly idle.
+            u.tg.home_x = u.cell_x;
+            u.tg.home_y = u.cell_y;
             u.guard_x = u.cell_x;
             u.guard_y = u.cell_y;
         }
