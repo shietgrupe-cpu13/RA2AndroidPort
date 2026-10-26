@@ -30,13 +30,7 @@ struct SkirmishLoadArt {
         const bool soviet = ls < cfg.slots.size() && cfg.slots[ls].side == ra2engine::World::Side::Soviet;
         const std::string country = ls < cfg.slots.size() ? cfg.slots[ls].country : std::string();
         art_name = "ls800" + country_art(country, soviet) + ".shp";
-        static const std::pair<const char*, const char*> kPal[] = {
-            {"ustates", "mplsu.pal"}, {"ukingdom", "mplsuk.pal"}, {"russia", "mplsr.pal"}, {"libya", "mplsl.pal"},
-            {"korea", "mplsk.pal"},   {"iraq", "mplsi.pal"},      {"germany", "mplsg.pal"}, {"france", "mplsf.pal"},
-            {"cuba", "mplsc.pal"}};
-        std::string pal_name = "mpls.pal";
-        for (const auto& e : kPal)
-            if (art_name == std::string("ls800") + e.first + ".shp") pal_name = e.second;
+        const std::string pal_name = ra2engine::loading_country_palette(country,soviet);
         try {
             const std::string dir = env_install_dir();
             // [RE: the MPLS*.PAL names next to LDSCRN*.PAL in gamemd] the YR
@@ -50,16 +44,6 @@ struct SkirmishLoadArt {
                     pal = ra2assets::Palette::load(raw.data(), raw.size());
                     ok = bg.count() > 0;
                     if (ok) g_skirmish_load_art_drawn = art_name;   // --play evidence (art found)
-                }
-                // Yuri's default MPLS.PAL is in the original cache.mix,
-                // while its LS800YURI.SHP is in expansion loadmd.mix.
-                else if(country=="YuriCountry") {
-                    auto original=ra2assets::MixFile::open_path(dir+"ra2.mix");
-                    auto cache=original.open_nested("cache.mix");
-                    if(const auto* pe=cache.find(std::string("mpls.pal"))) {
-                        const auto raw=cache.read(*pe);pal=ra2assets::Palette::load(raw.data(),raw.size());
-                        ok=bg.count()>0;if(ok)g_skirmish_load_art_drawn=art_name;
-                    }
                 }
             }
             map_name = cfg.map_file;

@@ -15,9 +15,24 @@ TEST_CASE("Yuri presentation: retail flag loading image and palette decode from 
  const auto load=ra2fixture::mix_by_name("ra2md.mix").open_nested("loadmd.mix");
  const auto* image=load.find(std::string("ls800yuri.shp"));REQUIRE(image);
  const auto shp=ra2assets::ShpFile::load(load.read(*image));CHECK(shp.count()>0);CHECK(shp.width()==800);
- const auto cache=ra2fixture::ra2_mix().open_nested("cache.mix");
- const auto* palette=cache.find(std::string("mpls.pal"));REQUIRE(palette);
- const auto bytes=cache.read(*palette);CHECK(bytes.size()==768);
+ const auto* palette=load.find(ra2engine::loading_country_palette("YuriCountry",false));REQUIRE(palette);
+ const auto bytes=load.read(*palette);CHECK(bytes.size()==768);
+ const auto pal=ra2assets::Palette::load(bytes.data(),bytes.size());
+ const auto pixels=ra2assets::ShpFile::palettize(shp.decode_indexed(0),pal);
+ REQUIRE(pixels.size()==800*600);
+ // Authentic loading panel interior is black; the old MPLS mapping made it white.
+ const auto panel=pixels[480*800+600];CHECK(panel.r==0);CHECK(panel.g==0);CHECK(panel.b==0);
+}
+TEST_CASE("loading presentation: every playable country has a paired retail loading palette") {
+ using namespace ra2engine;
+ CHECK(loading_country_palette("YuriCountry",false)=="mpyls.pal");
+ if(!ra2fixture::assets_available())return;
+ const auto load=ra2fixture::mix_by_name("ra2md.mix").open_nested("loadmd.mix");
+ for(const auto* country:{"Americans","British","French","Germans","Alliance","Koreans","Russians","Confederation","Africans","Arabs","YuriCountry"}) {
+  const auto* image=load.find("ls800"+loading_country_art(country,false)+".shp");
+  const auto* palette=load.find(loading_country_palette(country,false));
+  REQUIRE(image);REQUIRE(palette);CHECK(palette->size==768);
+ }
 }
 TEST_CASE("Yuri presentation: expansion loading image and harvesting-role warning are distinct") {
  using namespace ra2engine;
