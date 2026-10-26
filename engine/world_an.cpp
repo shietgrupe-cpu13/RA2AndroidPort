@@ -774,7 +774,7 @@ void World::an_step_fixed_wing(double dt) {
             (void)have_goal;
             const RocketBlock& blk = P.rockets.block[static_cast<std::size_t>(
                 std::clamp(u.an.t.rocket_kind < 0 ? 1 : u.an.t.rocket_kind, 0, 2))];
-            const int r = rocket_step(blk, u.an.t.rocket_speed, f, f.tx, f.ty, f.tz);
+            const int r = rocket_step(blk, u.an.t.rocket_speed, f, f.tx, f.ty, f.tz,u.an.t.rocket_kind==kRocketCMisl);
             u.fx = f.x / kLept;
             u.fy = f.y / kLept;
             u.altitude = std::max(0.0, f.z);

@@ -61,6 +61,16 @@ TEST_CASE("Deployment legality: area deployment cannot leak targeted primary fir
  for(int f=0;f<20;++f)w.step(1.0/15);
  CHECK(w.units()[1].hp<1000);
 }
+TEST_CASE("CMisl launch: vertical raise uses RaiseRate without changing Dreadnought tilt") {
+ RocketBlock b;b.pause_frames=2;b.tilt_frames=5;b.raise_rate=3;
+ b.pitch_initial=1;b.pitch_final=1;RocketFlight cm,dm;
+ rocket_launch(b,cm,100,200,40,1000,200);dm=cm;
+ for(int f=0;f<6;++f){rocket_step(b,20,cm,1000,200,0,true);rocket_step(b,20,dm,1000,200,0);}
+ CHECK(cm.x==100);CHECK(cm.y==200);CHECK(cm.z==52);
+ CHECK(dm.z==40);CHECK(cm.phase==kRocketTilt);
+ CHECK(rocket_step(b,20,cm,1000,200,0,true)==kRocketLeftLauncher);
+ CHECK(cm.phase==kRocketClimb);
+}
 TEST_CASE("DEBUG-AI: explicit lobby mode survives settings and config conversion") {
  LobbyState st; lobby_set_ai(st,1,kLobbyAiDebug);
  CHECK(st.rows[1].ai==kLobbyAiDebug);CHECK(lobby_ai_count(st)==1);

@@ -120,7 +120,8 @@ enum RocketStepResult : int { kRocketFlying = 0, kRocketLeftLauncher = 1, kRocke
 // kRocketDetonate when FUN_00661B30 fires (the nose reaches the target's
 // height, or the rocket's height drops below 1); the caller explodes it at
 // rocket_nose(). kRocketLeftLauncher on the frame the tilt ends.
-int rocket_step(const RocketBlock& b, int speed_cap, RocketFlight& f, double tx, double ty, double tz);
+int rocket_step(const RocketBlock& b, int speed_cap, RocketFlight& f, double tx, double ty, double tz,
+                bool vertical_raise=false);
 
 // The nose point (BodyLength ahead along pitch and yaw): FUN_00661B30's test
 // point and FUN_00662A70's explosion point.

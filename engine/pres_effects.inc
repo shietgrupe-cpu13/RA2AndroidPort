@@ -571,6 +571,10 @@ public:
             // the trail every 3 frames while it flies.
             if (u.an.t.missile || pres_upper(u.image) == v3_image() || pres_upper(u.image) == dmisl_image()) {
                 const double z = u.level * 104.0 + u.altitude;
+                if(u.an.t.rocket_kind==ra2engine::kRocketCMisl &&
+                   u.an.rocket.phase<ra2engine::kRocketClimb && (u.an.rocket.frames%24)==1) {
+                    if(fx_->spawn("V3TAKOFF",u.fx,u.fy,0,std::max(0.0,z-10.0)*kFxLepPx))++v3_puffs_;
+                }
                 if (u.an.rocket.phase >= ra2engine::kRocketClimb) {
                     if (rocket_launched_.insert(i).second) {
                         if (fx_->spawn("V3TAKOFF", u.fx, u.fy, 0, std::max(0.0, z - 10.0) * kFxLepPx)) ++v3_puffs_;

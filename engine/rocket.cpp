@@ -152,7 +152,8 @@ bool nose_contact(const RocketBlock& b, const RocketFlight& f, double tz) {
 }
 }  // namespace
 
-int rocket_step(const RocketBlock& b, int speed_cap, RocketFlight& f, double tx, double ty, double tz) {
+int rocket_step(const RocketBlock& b, int speed_cap, RocketFlight& f, double tx, double ty, double tz,
+                bool vertical_raise) {
     ++f.frames;
     int result = kRocketFlying;
     const double cap = static_cast<double>(std::max(1, speed_cap));
@@ -178,6 +179,9 @@ int rocket_step(const RocketBlock& b, int speed_cap, RocketFlight& f, double tx,
                 const int total = std::max(1, b.tilt_frames);
                 const double t = static_cast<double>(total - f.timer) / total;
                 if (f.timer > 0) {
+                    // CMisl uses the configured RaiseRate during its launch
+                    // interval, not the stationary V3/Dreadnought tilt arm.
+                    if(vertical_raise){f.z+=b.raise_rate;break;}
                     f.pitch = p0 + (p1 - p0) * t;
                     break;
                 }
