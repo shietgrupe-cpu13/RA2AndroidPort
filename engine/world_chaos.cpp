@@ -10,6 +10,18 @@ namespace ra2engine {
 namespace {
 const std::string& key(const Unit& u) { return u.tg.t.rules_id.empty()?u.image:u.tg.t.rules_id; }
 bool live(const Unit& u) { return u.alive && u.die_time<0 && u.cargo_of<0; }
+// Recover an index only for the exact current World element. Integer address
+// checks avoid subtracting unrelated pointers used by standalone combat tests.
+int world_index(const std::vector<Unit>& units,const Unit& source) {
+    if(units.empty())return -1;
+    const auto address=reinterpret_cast<std::uintptr_t>(&source);
+    const auto base=reinterpret_cast<std::uintptr_t>(units.data());
+    if(address<base)return -1;
+    const auto offset=address-base;
+    if(offset%sizeof(Unit))return -1;
+    const auto i=offset/sizeof(Unit);
+    return i<units.size() && &units[i]==&source ? static_cast<int>(i) : -1;
+}
 }
 void World::configure_chaos(const ra2assets::Rules& rules,const ra2assets::Ini& ini) {
     chaos_.enabled=true;chaos_.sources.clear();chaos_.friendly.clear();chaos_.immune.clear();
@@ -48,11 +60,10 @@ bool World::unit_berserk(int i) const {
         i<static_cast<int>(units_.size()) && live(units_[i]);
 }
 bool World::combat_hostile(const Unit& source,const Unit& target) const {
-    if(chaos_.enabled)for(const auto& active:chaos_.active)
-        if(unit_berserk(active.first) && &units_[active.first]==&source) {
-            const auto friendly=chaos_.friendly.find(key(target));
-            return &source!=&target && (friendly==chaos_.friendly.end() || !friendly->second);
-        }
+    if(chaos_.enabled && unit_berserk(world_index(units_,source))) {
+        const auto friendly=chaos_.friendly.find(key(target));
+        return &source!=&target && (friendly==chaos_.friendly.end() || !friendly->second);
+    }
     return is_enemy(source.house,target.house);
 }
 void World::note_chaos_hit(int unit,int frames) const {
@@ -62,12 +73,11 @@ void World::note_chaos_hit(int unit,int frames) const {
     chaos_.pending[unit]=frames;
 }
 bool World::combat_hostile(const Unit& source,const Building& target) const {
-    if(chaos_.enabled)for(const auto& active:chaos_.active)
-        if(unit_berserk(active.first) && &units_[active.first]==&source) {
-            if(target.type<0 || target.type>=static_cast<int>(btypes().size()))return false;
-            const auto friendly=chaos_.friendly.find(btypes()[target.type].id);
-            return friendly==chaos_.friendly.end() || !friendly->second;
-        }
+    if(chaos_.enabled && unit_berserk(world_index(units_,source))) {
+        if(target.type<0 || target.type>=static_cast<int>(btypes().size()))return false;
+        const auto friendly=chaos_.friendly.find(btypes()[target.type].id);
+        return friendly==chaos_.friendly.end() || !friendly->second;
+    }
     return is_enemy(source.house,target.house);
 }
 bool World::deploy_chaos(int i) {
