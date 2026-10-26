@@ -178,3 +178,16 @@ Verify Yuri's sidebar/radar, Chaos Drone upper-centre gas on flat ground/slopes,
 and DEBUG-AI economy plus save/load. Save58 reads55/56/57; older APKs cannot
 read new58 saves. Disc discharge, Magnetron lifting and further Bunker polish
 remain research items. No physical-phone testing is claimed by the build.
+
+Build900048: Disc combat retains eight charging emissions and a final discharge
+instead of immediate damage/report. Test moving/air/ground targets, Force Fire,
+death/range cancellation and save/load mid-charge. The visual ring remains an
+independent regular-circle approximation; building drains are retained.
+Gatling Cannon instant shots now invoke their warhead impact animation; compare
+stage1/2/3 muzzle and impact with the Tank. Capture sound and MUZZLE diagnostics.
+Bunker occlusion now follows its interpolated render pose and avoids duplicate
+passage draws. Test all entry/exit directions. Stopped units >=1s have bounded
+TRAFFIC_SNAPSHOT context; share a report while the obstruction is still visible.
+DEBUG-AI is retained. Normal-AI expansion and Magnetron lift/drop are not claimed
+fixed. Save59 reads55/56/57/58; older APKs cannot read59. Keep save backups.
+See VERA20K-EFFECTS48.md for evidence, limitations and remaining acceptance.
