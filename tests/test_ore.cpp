@@ -1,6 +1,15 @@
 #include "doctest.h"
 #include "../engine/ore.hpp"
+#include <limits>
 using namespace ra2engine;
+
+TEST_CASE("ore: disabled and invalid legacy intervals do not hang or consume RNG") {
+ OreField f(4,4);std::vector<std::uint8_t> pass(16,1);OreRng rng;
+ const auto before=rng.s;
+ for(double interval:{0.0,-1.0,std::numeric_limits<double>::infinity(),std::numeric_limits<double>::quiet_NaN()}) {
+  f.step(1.0/15,interval,0.1,0.1,pass,rng);CHECK(rng.s==before);
+ }
+}
 
 TEST_CASE("ore: overlay classification [RE-GATE pre-hunt key-1 table]") {
     // NOTE: three literals below (123->121, 168->166, variant index 110->108)

@@ -2,6 +2,7 @@
 #include "orig_math.hpp"   // Net L0: om::ftol (_ftol 0x7C4D00) for double->int
 
 #include <algorithm>
+#include <cmath>
 
 namespace ra2engine {
 
@@ -197,6 +198,9 @@ void OreField::step(double dt, double interval_secs, double growth_pct, double s
         step_original(dt, growth_pct, spread_pct, passable, rng, occ);
         return;
     }
+    // The legacy seconds-based owner has no timer to advance when disabled.
+    // Zero/negative intervals otherwise spin forever without consuming time.
+    if (!(interval_secs > 0.0) || !std::isfinite(interval_secs)) return;
     timer_ += dt;
     while (timer_ >= interval_secs) {
         timer_ -= interval_secs;
