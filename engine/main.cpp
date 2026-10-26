@@ -15129,7 +15129,8 @@ ra2engine::World launch_skirmish(const ra2engine::SkirmishConfig& cfg,
             ++combatant_ix;
             const std::string country = s.country.empty() ? gf_default_country(s.side) : s.country;
             const int mcv = gf_spawn_start_force(world, *gf_rules_ini, rules, i, country, bx, by,
-                                                 cfg.unit_count, cfg.tech_level, rng, gf_spawned, gf_art);
+                                                 ra2engine::debug_ai_mode(s.diff) && s.is_ai ? 0 : cfg.unit_count,
+                                                 cfg.tech_level, rng, gf_spawned, gf_art);
             if (s.is_ai && ba.ok) {
                 world.enable_ai_house(i, make_ai_config(ba, rules, s.diff, cfg.starting_cash));
                 // An AI house unfolds its MCV at once (the AI's "deploy the
@@ -15159,12 +15160,13 @@ ra2engine::World launch_skirmish(const ra2engine::SkirmishConfig& cfg,
         ++combatant_ix;
         if (ba.ok) spawn_base(world, ba, /*house=*/i, bx, by);
         // unit_count starting units (ring-scan for free walkable cells).
+        const int start_units = s.is_ai && ra2engine::debug_ai_mode(s.diff) ? 0 : cfg.unit_count;
         ra2engine::UnitCombat uc = resolve_combat_unit(
             rules, s.side == ra2engine::World::Side::Soviet ? "E2" : "E1").combat;
         int placed = 0;
-        for (int r = 1; r <= 8 && placed < cfg.unit_count; ++r)
-            for (int dy = -r; dy <= r && placed < cfg.unit_count; ++dy)
-                for (int dx = -r; dx <= r && placed < cfg.unit_count; ++dx) {
+        for (int r = 1; r <= 8 && placed < start_units; ++r)
+            for (int dy = -r; dy <= r && placed < start_units; ++dy)
+                for (int dx = -r; dx <= r && placed < start_units; ++dx) {
                     if (std::max(std::abs(dx), std::abs(dy)) != r) continue;
                     const int x = bx + dx, y = by + dy;
                     if (world.walkable(x, y) && world.unit_at_cell(x, y) < 0) {

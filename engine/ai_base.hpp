@@ -65,7 +65,9 @@ constexpr bool kDifficultyBuildSlowdown[3] = {false, true, true};   // BuildSlow
 // the difficulty sections. The lobby->index arithmetic is [RE-FALLBACK:
 // index 0=Easy,1=Normal,2=Difficult as loaded; default Normal].
 // AiDifficulty is the LOBBY choice (Easy / Normal / Brutal=Difficult).
-enum class AiDifficulty { Easy = 0, Normal = 1, Difficult = 2 };
+enum class AiDifficulty { Easy = 0, Normal = 1, Difficult = 2, Debug = 3 };
+inline bool debug_ai_mode(AiDifficulty d) { return d == AiDifficulty::Debug; }
+inline int normal_difficulty_index(AiDifficulty d) { return debug_ai_mode(d) ? 1 : static_cast<int>(d); }
 
 // [G-63; RE: FUN_004f6dd0 = HouseClass::AssignHandicap(diff) -- stores diff at
 // house+0x184 and copies the DifficultyClass at Rules+0x1538 + diff*0x50
@@ -76,7 +78,7 @@ enum class AiDifficulty { Easy = 0, Normal = 1, Difficult = 2 };
 // 0 is the HARDEST AI and it runs on the [Easy] (bonus) DifficultyClass:
 // house+0x184 = 2 - lobby. The per-difficulty CSV arrays (TeamDelays,
 // *BaseDefenseCounts "h,m,e", ...) are indexed by the same house+0x184.]
-inline int difficulty_class_index(AiDifficulty lobby) { return 2 - static_cast<int>(lobby); }
+inline int difficulty_class_index(AiDifficulty lobby) { return 2 - normal_difficulty_index(lobby); }
 
 // Raw values of ONE rules difficulty group, filled by main.cpp from rulesmd
 // via Rules::section_double [RE: ai-base.md §4]. Tests hand-build them from

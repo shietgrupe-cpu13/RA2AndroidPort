@@ -1,10 +1,16 @@
 #include "doctest.h"
 #include "world.hpp"
 #include "combat.hpp"
+#include "harvest.hpp"
 #include "command.hpp"
 #include "savegame.hpp"
 #include "ra2assets/rules.hpp"
 #include <chrono>
+#include "debug_ai.hpp"
+#include "gas_emitter.hpp"
+#include "skirmish_lobby.hpp"
+using ra2assets::Rules;
+#include "../engine/ai_side_catalog.inc"
 using namespace ra2engine;
 namespace {
 struct ChaosRig {
@@ -23,6 +29,82 @@ UnitCombat type(const char* id,int damage=0) {
 }
 void drone(World& w) {auto c=type("CAOS",600);c.range=3;c.cell_spread=3;c.omni_fire=true;
  c.verses={100,100,100,50,50,50,0,0,0,100,100};w.add_combat_unit(10,10,0,c);}
+}
+TEST_CASE("DEBUG-AI: explicit lobby mode survives settings and config conversion") {
+ LobbyState st; lobby_set_ai(st,1,kLobbyAiDebug);
+ CHECK(st.rows[1].ai==kLobbyAiDebug);CHECK(lobby_ai_count(st)==1);
+ CHECK(lobby_ai_to_slot_type(kLobbyAiDebug)==7);
+ CHECK(lobby_slot_type_to_ai(7)==kLobbyAiDebug);
+ CHECK(lobby_ai_difficulty(kLobbyAiDebug)==AiDifficulty::Debug);
+ CHECK(difficulty_class_index(AiDifficulty::Debug)==1);
+ auto ini=IniDoc::parse("");lobby_store(st,ini,{"Americans","YuriCountry"});
+ const auto restored=lobby_load(ini,{}, {},{"Americans","YuriCountry"});CHECK(restored.rows[1].ai==kLobbyAiDebug);
+ LobbyConvertCtx ctx;ctx.countries={"Americans","YuriCountry"};
+ CHECK(lobby_to_config(st,ctx).slots[1].diff==AiDifficulty::Debug);
+}
+TEST_CASE("DEBUG-AI: Yuri base selection uses ThirdSide and planning side two") {
+ const auto ini=ra2assets::Ini::parse("[Sides]\nGDI=Americans\nNod=Russians\nThirdSide=YuriCountry\n[YAREFN]\nOwner=Americans,Russians,YuriCountry\nAIBasePlanningSide=2\n");
+ const auto rules=Rules::load(ini);
+ CHECK(aiside::planning_side(World::Side::Yuri)==2);
+ CHECK(aiside::house_country(World::Side::Yuri,"",&rules)=="YuriCountry");
+ CHECK(aiside::house_country(World::Side::Yuri,"YuriCountry",&rules)=="YuriCountry");
+ CHECK(aiside::owned_by(rules,"YAREFN",World::Side::Yuri,"YuriCountry"));
+ CHECK_FALSE(aiside::owned_by(rules,"YAREFN",World::Side::Allied,"Americans"));
+ CHECK_FALSE(aiside::owned_by(rules,"YAREFN",World::Side::Soviet,"Russians"));
+}
+TEST_CASE("DEBUG-AI: base economy constructs prerequisites without defenses or combat production") {
+ ChaosRig rig;World w(rig.map);World::HouseRec h;h.side=World::Side::Allied;w.set_house(1,h);
+ AiHouseConfig c;c.difficulty=AiDifficulty::Debug;c.start_credits=10000;c.build_speed=0.001;
+ c.mods.build_delay_min=0;c.catalog.conyard=0;c.catalog.power=1;c.catalog.refinery=2;
+ c.catalog.war_factory=3;c.catalog.barracks=4;c.catalog.radar=5;c.catalog.tech=6;
+ c.catalog.defenses={7};c.catalog.superweapons={8};c.ai.refinery_limit=1;c.ai.war_limit=1;
+ for(const auto* id:{"CY","POWER","REF","WEAP","BARR","RADAR","TECH","GUN","NUKE"}) {
+  BuildingTypeDef d;d.id=id;d.strength=1000;d.cost=100;d.tech_level=1;d.adjacent=4;
+  c.roster.push_back(d);
+ }
+ c.roster[0].conyard=true;c.roster[1].power=1000;
+ for(int i=2;i<=6;++i)c.roster[i].prerequisite={"POWER"};
+ c.roster[3].prerequisite={"REF"};c.team.enabled=true;c.team.veh_factory_types={3};c.team.harvesters_per_refinery=1;
+ UnitTypeDef miner;miner.id="HARV";miner.harvester=true;miner.storage=10;miner.is_vehicle=true;
+ miner.cost=100;miner.tech_level=1;miner.combat=type("HARV",10);c.team.unit_roster={miner};
+ w.set_economy(c.roster,{2},{},0,0,0);
+ w.add_building(0,3,3,1,1,1,1000,0,0,true);w.enable_ai_house(1,c);
+ for(int i=0;i<1400;++i)w.step(1.0/15);
+ int power=0,refinery=0,factory=0;
+ for(const auto& b:w.buildings())if(b.alive && b.house==1){CHECK(b.type!=7);CHECK(b.type!=8);power+=b.type==1;refinery+=b.type==2;factory+=b.type==3;}
+ CHECK(power>0);CHECK(refinery>0);CHECK(factory>0);
+ int miners=0;for(const auto& u:w.units())if(u.alive && u.house==1){CHECK(u.image=="HARV");++miners;}
+ CHECK(miners>0);CHECK(w.ai_team_state(1)->teams.empty());
+}
+TEST_CASE("DEBUG-AI: economy-only policy leaves normal AI unchanged") {
+ AiHouseConfig c;c.team.enabled=true;c.catalog.defenses={4};c.catalog.superweapons={5};c.catalog.wall=6;
+ for(const auto* id:{"HARV","CMIN","SMIN","AMCV","SMCV","PCV","HTNK","E1","ORCA","SUB"}) {
+  UnitTypeDef d;d.id=id;d.harvester=d.id=="HARV" || d.id=="CMIN";c.team.unit_roster.push_back(d);
+ }
+ const auto normal=c;configure_debug_ai(c);
+ CHECK(c.team.unit_roster.size()==normal.team.unit_roster.size());CHECK(c.catalog.defenses==normal.catalog.defenses);
+ c.difficulty=AiDifficulty::Debug;configure_debug_ai(c);
+ CHECK(c.team.unit_roster.size()==6);CHECK(c.catalog.defenses.empty());CHECK(c.catalog.superweapons.empty());
+ CHECK(c.catalog.wall==-1);CHECK_FALSE(c.fire_superweapons);CHECK(c.team.rules.total_team_cap==0);
+ CHECK(c.team.aimd.teams.empty());CHECK_FALSE(c.team.triggers_enabled);CHECK(c.hate_delay_frames==-1);
+}
+TEST_CASE("DEBUG-AI: armed economic units never fire and saved continuation stays deterministic") {
+ ChaosRig rig;World w(rig.map);configure(w);
+ World::HouseRec h;h.side=World::Side::Soviet;w.set_house(1,h);
+ AiHouseConfig c;c.difficulty=AiDifficulty::Debug;w.enable_ai_house(1,c);
+ w.add_combat_unit(10,10,1,type("HARV",20));w.add_combat_unit(11,10,0,type("TARGET"));
+ auto& u=const_cast<Unit&>(w.units()[0]);u.target=1;u.attack_order=true;
+ for(int i=0;i<60;++i)w.step(1.0/15);
+ CHECK(w.debug_ai(1));CHECK(w.units()[1].hp==1000);CHECK(w.units()[0].fire_flash==0);
+ CHECK(w.ai_team_state(1)->teams.empty());
+ World loaded(rig.map);REQUIRE(save::load_world(loaded,save::save_world(w)));CHECK(loaded.debug_ai(1));
+ for(int i=0;i<60;++i){w.step(1.0/15);loaded.step(1.0/15);}
+ CHECK(save::save_world(w)==save::save_world(loaded));CHECK(loaded.units()[1].hp==1000);
+}
+TEST_CASE("Chaos vent: render-only centre top follows slope projection") {
+ const auto flat=gas_vent_projection(20.871,0);CHECK(flat[0]==0);CHECK(flat[1]==doctest::Approx(20.871*kIsoZ));
+ for(int ramp=1;ramp<=16;++ramp){const auto p=gas_vent_projection(20.871,ramp);CHECK(std::isfinite(p[0]));CHECK(p[1]>0);}
+ CHECK(gas_vent_projection(-1,0)[1]==0);
 }
 TEST_CASE("Chaos: deploy is a self-centered status blast without HP damage") {
  ChaosRig rig;World w(rig.map);configure(w);drone(w);

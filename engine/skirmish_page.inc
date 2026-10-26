@@ -375,6 +375,7 @@ private:
             case ra2engine::kLobbyAiEasy: return text_.ai[1];
             case ra2engine::kLobbyAiMedium: return text_.ai[2];
             case ra2engine::kLobbyAiBrutal: return text_.ai[3];
+            case ra2engine::kLobbyAiDebug: return "DEBUG-AI";
             default: return text_.ai[0];
         }
     }
@@ -403,19 +404,19 @@ private:
                                                                                  : kind == CB_TEAM ? team_rect(row) : kind==CB_SPAWN?spawn_rect(row):color_rect(row);
         int cur = 0;
         if (kind == CB_AI) {
-            const int order[4] = {ra2engine::kLobbyAiNone, ra2engine::kLobbyAiEasy,
-                                  ra2engine::kLobbyAiMedium, ra2engine::kLobbyAiBrutal};
+            const int order[5] = {ra2engine::kLobbyAiNone, ra2engine::kLobbyAiEasy,
+                                  ra2engine::kLobbyAiMedium, ra2engine::kLobbyAiBrutal, ra2engine::kLobbyAiDebug};
             for (int v : order) {
                 list_.items.push_back(ai_label(v));
                 list_.data.push_back(v);
                 if (v == st_.rows[row].ai) cur = static_cast<int>(list_.data.size()) - 1;
             }
-            list_.visible = 4;
+            list_.visible = 5;
         } else if (kind == CB_COUNTRY) {
             list_.items.push_back(text_.random_country);
             list_.data.push_back(ra2engine::kLobbyRandom);
             for (int c = 0; c < static_cast<int>(countries_.size()); ++c) {
-                if(row>0 && countries_[c]=="YuriCountry") continue;
+                if(row>0 && countries_[c]=="YuriCountry" && st_.rows[row].ai!=ra2engine::kLobbyAiDebug) continue;
                 list_.items.push_back(country_label(c));
                 list_.data.push_back(c);
                 if (c == st_.rows[row].country) cur = static_cast<int>(list_.data.size()) - 1;
@@ -535,7 +536,10 @@ private:
         ctx.countries = countries_;
         const bool explicit_yuri=st_.rows[0].country>=0 && st_.rows[0].country<static_cast<int>(countries_.size()) &&
                                  countries_[st_.rows[0].country]=="YuriCountry";
-        ctx.country_allowed=[explicit_yuri](int row,const std::string& c){return c!="YuriCountry" || (row==0 && explicit_yuri);};
+        ctx.country_allowed=[this,explicit_yuri](int row,const std::string& c){
+            return c!="YuriCountry" || (row==0 && explicit_yuri) ||
+                   (row>0 && st_.rows[row].ai==ra2engine::kLobbyAiDebug);
+        };
         const Rules* r = &rules_;
         ctx.side_of = [r](const std::string& c) { return gf_side_of_country(*r, c); };
         ctx.seed = seed;
@@ -760,7 +764,7 @@ void SkirmishSetupScene::play_probe(ra2play::Probe& p) {
         p.targets[kv.first] = ra2play::Rect{d.x, d.y, std::max(1, d.w), std::max(1, d.h)};
     }
     for (const ShellButton& b : buttons()) p.set("button_enabled(" + b.label + ")", b.enabled ? 1 : 0);
-    static const char* kAi[] = {"None", "Brutal", "Medium", "Easy"};
+    static const char* kAi[] = {"None", "Brutal", "Medium", "Easy", "DEBUG-AI"};
     for (int k = 0; k < ra2engine::kLobbyRows; ++k) {
         const std::string n = "(" + std::to_string(k) + ")";
         const ra2engine::LobbyRow& r = st_.rows[k];

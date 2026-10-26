@@ -64,6 +64,7 @@ int lobby_ai_to_slot_type(int ai) {
         case kLobbyAiBrutal: return 4;
         case kLobbyAiMedium: return 5;
         case kLobbyAiEasy:   return 6;
+        case kLobbyAiDebug:  return 7; // engine-local extension, not a retail slot type
         default:             return 1;
     }
 }
@@ -73,6 +74,7 @@ int lobby_slot_type_to_ai(int type) {
         case 4:  return kLobbyAiBrutal;
         case 5:  return kLobbyAiMedium;
         case 6:  return kLobbyAiEasy;
+        case 7:  return kLobbyAiDebug;
         default: return kLobbyAiNone;
     }
 }
@@ -81,6 +83,7 @@ AiDifficulty lobby_ai_difficulty(int ai) {
     switch (ai) {
         case kLobbyAiBrutal: return AiDifficulty::Difficult;
         case kLobbyAiEasy:   return AiDifficulty::Easy;
+        case kLobbyAiDebug:  return AiDifficulty::Debug;
         default:             return AiDifficulty::Normal;
     }
 }
@@ -262,7 +265,7 @@ bool lobby_row_active(const LobbyState& st, int row) {
 int lobby_ai_count(const LobbyState& st) {
     int n = 0;
     for (int row = 1; row < kLobbyRows; ++row)
-        if (st.rows[row].ai >= kLobbyAiBrutal && st.rows[row].ai <= kLobbyAiEasy) ++n;
+        if (st.rows[row].ai >= kLobbyAiBrutal && st.rows[row].ai <= kLobbyAiDebug) ++n;
     return n;
 }
 
@@ -286,7 +289,7 @@ std::vector<int> lobby_color_choices(const LobbyState& st, int row) {
 
 void lobby_set_ai(LobbyState& st, int row, int ai) {
     if (row <= 0 || row >= kLobbyRows) return;
-    if (ai < kLobbyAiNone || ai > kLobbyAiEasy) ai = kLobbyAiNone;
+    if (ai < kLobbyAiNone || ai > kLobbyAiDebug) ai = kLobbyAiNone;
     st.rows[row].ai = ai;
     if (ai == kLobbyAiNone) {
         st.rows[row].country = kLobbyRandom;

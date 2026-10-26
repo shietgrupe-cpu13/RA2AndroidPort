@@ -313,6 +313,7 @@ void World::step_building_combat(double dt) {
     for (int bi = 0; bi < nb; ++bi) {
         Building& b = buildings_[bi];
         if (!b.alive || b.state != Building::State::Idle) continue;
+        if (debug_ai(b.house)) continue;
         if (b.type < 0 || b.type >= static_cast<int>(types.size())) continue;
         const BuildingTypeDef& t = types[b.type];
         if(b.attack_order_kind) {step_ordered_building_fire(bi,dt);continue;}

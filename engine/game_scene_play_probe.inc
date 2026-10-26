@@ -136,6 +136,7 @@
             }
             if (const ra2engine::AiHouseConfig* ac = world_.ai_config(h))
                 p.set_s("ai(" + hs + ")", ac->difficulty == ra2engine::AiDifficulty::Easy ? "Easy"
+                                          : ra2engine::debug_ai_mode(ac->difficulty) ? "DEBUG-AI"
                                           : ac->difficulty == ra2engine::AiDifficulty::Normal ? "Medium"
                                           : "Brutal");
             else

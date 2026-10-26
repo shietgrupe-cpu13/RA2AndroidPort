@@ -34,7 +34,7 @@ inline std::string lobby_team_label(int team) { return team>=0 && team<kLobbyTea
 constexpr int kLobbyColors = 8;      // Gold Red Blue Green Orange Sky Purple Pink
 
 // AI combo item data (FUN_00683FC0): None -1, Brutal 0, Medium 1, Easy 2.
-enum : int { kLobbyAiNone = -1, kLobbyAiBrutal = 0, kLobbyAiMedium = 1, kLobbyAiEasy = 2 };
+enum : int { kLobbyAiNone = -1, kLobbyAiBrutal = 0, kLobbyAiMedium = 1, kLobbyAiEasy = 2, kLobbyAiDebug = 3 };
 
 // [Skirmish] SlotNN type <-> combo value (0x683FC0 / 0x6829F0):
 // None 1, Brutal 4, Medium 5, Easy 6. Unknown types read as None.

@@ -18,7 +18,7 @@ std::uint32_t ai_rand(std::uint32_t& s) {
 DifficultyMods difficulty_mods(AiDifficulty d, const DifficultyGroupRaw (&groups)[3]) {
     // `d` is the LOBBY choice; the DifficultyClass is groups[2 - d] (the
     // hardest AI runs on [Easy]) [G-63; RE: FUN_004f6dd0, ai-base.md §4].
-    const int i = static_cast<int>(d);
+    const int i = normal_difficulty_index(d);
     const int c = difficulty_class_index(d);
     DifficultyMods m;
     m.cost_mul = groups[c].cost;

@@ -1452,6 +1452,9 @@ public:
     // type (nearest node cell first). Call right after enable_ai_house.
     void set_ai_base_nodes(int house, const std::vector<PlannedNode>& nodes);
     bool ai_enabled(int house) const;
+    bool debug_ai(int house) const {
+        return ai_enabled(house) && debug_ai_mode(ai_houses_[house].cfg.difficulty);
+    }
     // Test/demo accessors (read-only views of the per-house AI record;
     // nullptr / 0 / -1 when `house` is not AI-flagged).
     const AiBaseState* ai_state(int house) const;

@@ -18,6 +18,7 @@
 // Prerequisites are FULL-parsed from rulesmd (APOC needs NATECH, V3 needs
 // NARADR, ...), so a house builds only what its base allows; each house's
 // share is filtered by Owner/RequiredHouses/ForbiddenHouses (ai_side_catalog).
+#include "debug_ai.hpp"
 UnitRoster load_ai_skirmish_roster(const std::string& dir, const ra2assets::MixFile& ra2,
                                    const UnitAssets& ua, const Rules& rules, const Art& art) {
     load_progress("AI ROSTER");   // W2-AR-02 loading-screen checkpoint
@@ -59,6 +60,7 @@ UnitRoster load_ai_skirmish_roster(const std::string& dir, const ra2assets::MixF
         // no [AI] Build* list names, so a skirmish AI fields it only once it
         // owns a Robot Control Center by other means, as in the original).
         {"ROBO", true, "GAWEAP"}, {"BFRT", true, "GAWEAP"}, {"SCHP", true, "NAWEAP"},
+        {"SMIN", true, "YAWEAP"}, {"PCV", true, "YAWEAP"},
     };
     UnitRoster ur = load_unit_roster_table(dir, ra2, ua, rules, art, kAiUnits,
                                            sizeof(kAiUnits) / sizeof(kAiUnits[0]), /*full_parse=*/true);
@@ -188,7 +190,9 @@ ra2engine::AiHouseConfig make_ai_slot_config(const ra2engine::SkirmishSlot& s, d
         const int c = ra2engine::difficulty_class_index(s.diff);
         acfg.virtual_purifiers = c < (int)v.size() ? std::max(0, std::atoi(v[(std::size_t)c].c_str())) : 0;
     }
-    std::cerr << "[ai] slot side=" << (s.side == ra2engine::World::Side::Soviet ? "Soviet" : "Allied")
+    ra2engine::configure_debug_ai(acfg);
+    std::cerr << "[ai] slot side=" << (s.side == ra2engine::World::Side::Yuri ? "Yuri" : s.side == ra2engine::World::Side::Soviet ? "Soviet" : "Allied")
+              << " mode=" << (ra2engine::debug_ai_mode(s.diff) ? "DEBUG-AI" : "normal")
               << " country=" << country << " diff=" << (int)s.diff
               << " roster=" << acfg.team.unit_roster.size()
               << " teams=" << acfg.team.aimd.teams.size()

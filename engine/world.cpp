@@ -1,4 +1,5 @@
 #include "world.hpp"
+#include "debug_ai.hpp"
 #include "slave_passage.hpp"
 #include "orig_math.hpp"   // Net L0: the original's FastMath, never libm in the sim
 #include "weapon_unit.hpp"  // Gap fix C
@@ -2527,6 +2528,7 @@ void World::enable_ai_house(int house, AiHouseConfig cfg) {
     if ((int)ai_houses_.size() <= house) ai_houses_.resize(house + 1);
     HouseAiRec& rec = ai_houses_[house];
     rec.is_ai = true;
+    configure_debug_ai(cfg);
     rec.cfg = std::move(cfg);
     rec.state = AiBaseState{};
     rec.team_state = AiTeamState{};  // AI-2: fresh team state per enable
@@ -3902,7 +3904,7 @@ void World::step_ai_houses(double dt) {
         // W2-SK-10 base defence [RE-FALLBACK: the IsBaseDefense teams and
         // [AI] ComputerBaseDefenseResponse were not decoded]: every ~7 s, idle
         // un-teamed combat units engage enemies inside 12 cells of the base.
-        if ((repair_frame_ + (std::uint64_t)h) % 105u == 0u) {
+        if (!debug_ai(h) && (repair_frame_ + (std::uint64_t)h) % 105u == 0u) {
             const BaseView bv = make_ai_base_view(h, rec);
             std::vector<int> intruders;
             for (int i = 0; i < (int)units_.size(); ++i) {
@@ -5825,7 +5827,7 @@ void World::ai_fill_trigger_view(int house, const HouseAiRec& rec,
     // (the on-disk Easy/Normal/Hard slots) [RE: §5]. Normal (1) is the 2-x
     // fixed point and is unchanged; the raw fill silently gave a Difficult AI
     // the Easy pool (and vice-versa) — the RE-GATE non-inverted-difficulty drift.
-    v.difficulty = 2 - (int)rec.cfg.difficulty;
+    v.difficulty = difficulty_class_index(rec.cfg.difficulty);
     v.house_name = tc.house_name;
     v.side = tc.trigger_side;                 // 1=Allied/2=Soviet/3=Yuri [RE: §5]
     v.tech_level = tc.trigger_tech_level;

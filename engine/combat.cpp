@@ -1189,6 +1189,13 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
         // only ever flips false via the die_time path above), but a unit
         // spawned pre-dead should still never act.
         if (!u.alive) continue;
+        // Economy test opponents remain valid targets but never attack.
+        if (world.debug_ai(u.house)) {
+            u.target = u.target_building = -1;
+            u.attack_order = false;
+            u.fire_flash = 0;
+            continue;
+        }
 
         // (b2) CB-1: a CARRIED unit is off-map -- it cannot fire, cool down,
         // acquire, or pursue [spec §4].
