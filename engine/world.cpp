@@ -6034,6 +6034,7 @@ void World::step(double dt) {
     std::vector<ProjectileLaunch> launches;
     prepare_skirmish_mind_control();
     step_disc_drains();
+    step_chaos_timers(dt);
     const std::vector<MoveRequest> reqs = step_combat(*this, units_, buildings_, occ_, dt,
                                                       projectiles_enabled_ ? &launches : nullptr,
                                                       &combat_rng_);   // G-50 ROF jitter
@@ -6457,6 +6458,7 @@ void World::step(double dt) {
     // A pure INSERTION; `if (!abilities_any_) return;` (after the frame tick)
     // is the only cost every pre-P4 demo pays -- none registers a profile.
     step_abilities(dt);
+    resolve_chaos_hits();
     resolve_skirmish_mind_control();
     step_yuri_workers();
     step_victory();

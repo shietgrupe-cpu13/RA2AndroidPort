@@ -59,6 +59,7 @@ bool World::order_deploy(int idx) {
     if (is_mcv(idx)) return order_deploy_mcv(idx);
     if (idx < 0 || idx >= static_cast<int>(units_.size())) return false;
     Unit& u = units_[idx];
+    if (chaos_weapon(u)) return deploy_chaos(idx);
     // Gap fix C (G-45) [RE: docs/re/weapons.md §3]: a DeployFire infantry (GI
     // Para, GGI MissileLauncher -- deploy weapon without RadLevel) deploys into
     // an immobile gun position that keeps acquiring and firing its

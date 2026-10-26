@@ -347,6 +347,13 @@ bool SaveAccess::valid_world(const World& w, std::string* why) {
     auto bld_ix = [&](int i) { return i >= -1 && i < nb; };
     auto house_ix = [&](int h) { return h >= 0 && h < kMaxHouses; };
     if(w.drain_.delay<1 || w.drain_.amount<0 || w.drain_.links.size()>w.units_.size())return bad("drain configuration");
+    if(w.chaos_.active.size()>w.units_.size() || w.chaos_.pending.size()>w.units_.size())return bad("chaos status count");
+    if(!w.chaos_.enabled && (!w.chaos_.active.empty() || !w.chaos_.pending.empty()))return bad("disabled chaos status");
+    for(const auto& s:w.chaos_.active)
+        if(s.first<0 || s.first>=nu || s.second.frames<=0)return bad("chaos status");
+    for(const auto& s:w.chaos_.pending)
+        if(s.first<0 || s.first>=nu || s.second<=0)return bad("chaos pending hit");
+    for(int c:w.chaos_.tint)if(c<0 || c>255)return bad("chaos tint");
     std::set<int> drain_sources;
     for(const auto& d:w.drain_.links)
         if(d.unit<0 || d.unit>=nu || d.building<0 || d.building>=nb ||

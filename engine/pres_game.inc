@@ -862,6 +862,11 @@ private:
         const FxWeapon* wp = &fx_.weapon_fx(fired_weapon(w, u));
         if (wp->id.empty()) wp = fx_.weapon(u.image);
         if (!wp) return;
+        if(w.chaos_weapon(u)) {
+            // AreaFire is emitted at the Drone, at ground height, never the victim.
+            impact(u,u.w_damage,u.fx,u.fy,pres_unit_fx_level(w,u),0);
+            return;
+        }
         double ox = 0, lift = 0;
         std::array<double,3> source{};
         muzzle_point(w, u, ox, lift, &source);

@@ -96,6 +96,11 @@ inline void probe_world(const World& w) {
         }
     }
     note("CHECK_SUMMARY units=%zu buildings=%zu invalid=%u blocked_over_3s=%u unit_samples=%u", units.size(), buildings.size(), invalid, blocked, std::min(emitted,24u));
+    unsigned berserk_samples=0;
+    for(const auto& status:w.chaos_state().active) {
+        if(berserk_samples++>=16)break;
+        note("BERSERK unit=%d frames_left=%d active=%d",status.first,status.second.frames,w.unit_berserk(status.first));
+    }
     for (int house=0;house<std::min(w.house_count(),16);++house)
         for (auto type:w.sw_types(house)) if (const auto* sw=w.sw_state(house,type))
             note("POWER house=%d type=%d ready=%d charge=%.3f",house,static_cast<int>(type),sw->ready,sw->charge_fraction());

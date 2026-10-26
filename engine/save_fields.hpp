@@ -18,6 +18,13 @@
 #include "world.hpp"
 
 namespace ra2engine {
+template<class Ar> void fields(Ar& ar,ChaosStatus& v) {
+    save::io(ar,v.frames);save::io(ar,v.manual_hold);
+}
+template<class Ar> void fields(Ar& ar,ChaosState& v) {
+    save::io(ar,v.enabled);save::io(ar,v.sources);save::io(ar,v.friendly);
+    save::io(ar,v.immune);save::io(ar,v.active);save::io(ar,v.pending);save::io(ar,v.tint);
+}
 
 template<class Ar> void fields(Ar& ar,DrainType& v) {
     save::io(ar,v.enabled);save::io(ar,v.refinery);save::io(ar,v.power);
@@ -330,8 +337,14 @@ struct SaveAccess {
         if constexpr(Ar::kLoading) {
             if(ar.at_end())w.drain_.links.clear();
             else save::io(ar,w.drain_);
-        } else if(w.drain_.enabled)save::io(ar,w.drain_);
+        } else if(w.drain_.enabled || w.chaos_.enabled)save::io(ar,w.drain_);
         save::mark(ar,"drain_");
+        // v57 adds the temporary status owner after the intact v55/v56 payload.
+        if constexpr(Ar::kLoading) {
+            if(ar.at_end()) {w.chaos_.active.clear();w.chaos_.pending.clear();}
+            else save::io(ar,w.chaos_);
+        } else if(w.chaos_.enabled)save::io(ar,w.chaos_);
+        save::mark(ar,"chaos_");
     }
 
     // --- MapTriggerSystem: every member except d_ (the parsed map data, a

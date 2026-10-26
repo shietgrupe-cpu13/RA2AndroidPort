@@ -191,7 +191,8 @@ std::vector<int> unit_whom(const World& w,const Command& c) {
     std::vector<int> v;
     for (const Target& t : c.whom)
         if (t.is_unit() && unit_ok(w,t.id) &&
-            (c.house==kAnyHouse || w.units()[t.id].w7.slave_manager==-1)) v.push_back(t.id);
+            (c.house==kAnyHouse || (w.units()[t.id].w7.slave_manager==-1 &&
+             (w.house_is_computer(c.house) || !w.unit_berserk(t.id))))) v.push_back(t.id);
     return v;
 }
 

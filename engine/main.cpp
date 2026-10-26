@@ -1474,6 +1474,7 @@ ra2engine::AbilityRules resolve_ability_rules(const Rules& rules, const Ini& ini
 void wire_abilities(ra2engine::World& world, const Rules& rules, const Ini& ini) {
     world.set_ability_rules(resolve_ability_rules(rules, ini));
     world.configure_disc_drain(rules);
+    world.configure_chaos(rules,ini);
     std::vector<std::string> ids = {"DRON", "DESO", "CLEG", "TANY", "GHOST", "IVAN", "TERROR", "FV"};
     // W2-SK-17/18: the Demolition Truck (Suicide Demobomb + DeathWeapon), the
     // Apocalypse (Explodes=yes) and both attack dogs (ParasiteDog warhead,

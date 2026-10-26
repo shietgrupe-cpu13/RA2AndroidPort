@@ -25,6 +25,7 @@
 #include "ra2assets/map.hpp"
 #include "ra2assets/pal.hpp"  // ra2assets::Palette (house_palette render entry)
 #include "yuri_drain.hpp"
+#include "chaos.hpp"
 #include "unit_combat.hpp"  // UnitCombat (moved here to break the include cycle
                             // production.hpp -> unit_type.hpp -> world.hpp)
 
@@ -2148,6 +2149,16 @@ public:
     bool house_disc_drained(int house) const;
     const std::vector<DrainLink>& disc_drains() const { return drain_.links; }
     void step_disc_drains();
+    void configure_chaos(const ra2assets::Rules&,const ra2assets::Ini&);
+    bool chaos_weapon(const Unit&) const;
+    bool unit_berserk(int unit) const;
+    bool combat_hostile(const Unit& source,const Unit& target) const;
+    bool combat_hostile(const Unit& source,const Building& target) const;
+    void note_chaos_hit(int unit,int frames) const;
+    bool deploy_chaos(int unit);
+    void resolve_chaos_hits();
+    void step_chaos_timers(double dt);
+    const ChaosState& chaos_state() const { return chaos_; }
     // Produced-unit veterancy flag [RE: capture.md §B5]. Set by a factory
     // infiltration; consumed by add_combat_unit/launch_unit in Task 6 (units
     // this house produces thereafter spawn at veteran_rank 1). Index 2 inert.
@@ -3117,6 +3128,7 @@ private:
     std::vector<int> house_iq_;   // w7fix-combat: -1 = default (save v35)
     std::vector<HitRec> w7_hits_;   // the hit log (combat.hpp), drained by step_missions_w7
     DrainState drain_;
+    mutable ChaosState chaos_;
     ElevationRules elev_rules_;   // W5-B R-063
     AnimTable anims_;  // Unit::image -> UnitAnimSeq (set_anim); unregistered -> default_anim()
     bool inf_anims_ = false;                       // W3-B

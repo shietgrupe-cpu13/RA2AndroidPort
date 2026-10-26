@@ -77,6 +77,12 @@ inline bool pres_unit_tint(const ra2engine::World& w, int idx, ra2engine::ObjTin
     if (ft != g_flash_units.end()) counter = std::max(counter, ft->second - static_cast<long>(w.vet_frame()));
     if (counter > 0 && (counter & 2)) { b = b <= 1500 ? 2000 : 500; any = true; }
     pres_tint_brightness(out, b);
+    if(w.unit_berserk(idx) && u.an.iron_left_frames<=0) {
+        const auto& rgb=w.chaos_state().tint;
+        for(int channel=0;channel<3;++channel)
+            out.add[channel]=static_cast<unsigned char>(std::min(255,int(out.add[channel])+rgb[channel]));
+        any=true;
+    }
     if (pres_unit_warping(w, u)) {   // [RE: 0x705290 / 0x705AD0] Translucent50 while warping
         out.alpha = 128;
         any = true;

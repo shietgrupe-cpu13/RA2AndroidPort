@@ -64,7 +64,7 @@ bool valid_target(const std::vector<Unit>& units, const World& world, const Unit
     const Unit& v = units[idx];
     // W2-AN-13: a submerged sub no sonar of self's house has found is not a
     // target (its cell is not "seen" in the water layer).
-    return v.alive && v.die_time < 0.0 && unit_combat_exposed(v) && world.is_enemy(self.house, v.house) &&
+    return v.alive && v.die_time < 0.0 && unit_combat_exposed(v) && world.combat_hostile(self, v) &&
            !world.unit_hidden_from(self.house, v) && unit_weapon_for_unit(self, v) >= 0;
     // Multi-house/Alliances [RE: multihouse.md §3/§4]: hostility routes through
     // World::is_enemy. carried: untargetable (CB-1).
@@ -163,6 +163,11 @@ void try_fire(const World& world, std::vector<Unit>& units, std::vector<Building
               std::vector<ProjectileLaunch>* launches, ProjRng* rng) {
     u.rearm_frames = unit_rearm_frames(u, rng);   // W6-04-01 Burst
     u.fire_flash = kFireFlashSecs;
+    if(world.chaos_weapon(u)) {
+        damage_area(world,units,buildings,occ,u,attacker_idx,-1,
+                    unit_lept_x(u),unit_lept_y(u),unit_lept_z(u));
+        return;
+    }
     // W2-AN-12 [rules Spawner=yes: HornetLauncher/ASWLauncher/DredLauncher/
     // V3Launcher]: the "shot" launches a spawned aircraft/missile at the
     // victim (World::step_air_naval) -- the launcher weapon itself deals no damage.
@@ -369,9 +374,9 @@ bool w7_greatest_threat(const World& world, std::vector<Unit>& units, std::vecto
             // unarmed building, a computer unit may pick any.
             if (b.type < 0 || b.type >= static_cast<int>(bt.size()) ||
                 (!bt[static_cast<std::size_t>(b.type)].armed &&
-                 !(world.house_is_computer(u.house) && world.ai_threat_any_building())))
+                 !(world.unit_berserk(i) || (world.house_is_computer(u.house) && world.ai_threat_any_building()))))
                 continue;
-            if (!world.is_enemy(u.house, b.house) || !world.legal_threat_building(u.house, b) ||
+            if (!world.combat_hostile(u,b) || !world.legal_threat_building(u.house, b) ||
                 !world.object_visible_at(u.house, b.cx, b.cy))
                 continue;
             const int ws = unit_weapon_for_building(u, b.armor_ix, b.bomb_frame >= 0,
@@ -990,6 +995,14 @@ AreaResult damage_area(const World& world, std::vector<Unit>& units,
         if (w.vet.recv) raw = vet_receive(raw, w.vet);
         raw = inf_prone_damage(w.ia, raw, shooter.w_prone_damage);
         if (raw < 1) raw = 1;
+        if(world.chaos_weapon(shooter)) {
+            // Techno receiver 0x701D6B: duration uses the damage kernel at
+            // distance zero. Area admission above still bounds who is hit.
+            const int duration=modify_damage(raw,shooter.w_verses,w.armor_ix,
+                shooter.w_cell_spread,shooter.w_percent_at_max,0);
+            world.note_chaos_hit(h.idx,duration);
+            continue;
+        }
         const int dmg = modify_damage(raw, shooter.w_verses, w.armor_ix, shooter.w_cell_spread,
                                       shooter.w_percent_at_max, h.dist);
         if (dmg <= 0) continue;
@@ -1032,6 +1045,7 @@ AreaResult damage_area(const World& world, std::vector<Unit>& units,
     // holding a wall takes Reduce_Wall per the warhead's wall keys -- a map
     // wall overlay through the World, a built wall (a 1x1 Wall=yes building)
     // below instead of the HP hit.
+    if (world.chaos_weapon(shooter)) return res; // Status weapons never damage structures or walls.
     if (world.has_wall_overlays())
         for (int k = 0; k < rings; ++k)
             world.w6_overlay_wall_hit(icx + kRingOffsets[k][0], icy + kRingOffsets[k][1],
@@ -1496,6 +1510,11 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
                         continue;
                     u.rearm_frames = unit_rearm_frames(u, rof_rng);   // W6-04-01 Burst
                     u.fire_flash = kFireFlashSecs;
+                    if(world.chaos_weapon(u)) {
+                        damage_area(world,units,buildings,occ,u,i,-1,
+                            unit_lept_x(u),unit_lept_y(u),unit_lept_z(u));
+                        continue;
+                    }
                     u.cell_shot = true;
                 }
             } else if (!u.moving()) {
@@ -1555,7 +1574,8 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
             // (W7-04-19); Attack Move scans on the move (W7-07-12). Sleep,
             // Harmless, Attack, Hunt, Enter, ... never scan.
             if (u.target == -1 && u.target_building == -1) {
-                bool may = mission == 5 || mission == 11 || mission == 29 || mission == 6;
+                bool may = mission == 5 || mission == 11 || mission == 29 || mission == 6 ||
+                           (mission == 15 && world.unit_berserk(i));
                 if (mission == 2 || mission == 10) may = u.tg.t.opportunity_fire || u.tg.team_aggressive;
                 // (an ability weapon -- the dog's ParasiteDog jaw, the Ivan --
                 // scans like any other; only the structure pass skips them)
@@ -1572,7 +1592,7 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
                                                buckets, bgw, bgh, bucket_of);
                     if (found) {
                         const bool on_move = u.moving();
-                        u.attack_order = false;
+                        u.attack_order = world.unit_berserk(i);
                         u.guard_x = u.cell_x;
                         u.guard_y = u.cell_y;
                         if (mission == 11) { u.tg.home_x = u.cell_x; u.tg.home_y = u.cell_y; }

@@ -147,7 +147,7 @@ void World::step_yuri_workers(bool relocate) {
                 active(units_[mobile]) && units_[mobile].house == u.house) {
                 const Unit& miner = units_[mobile];
                 const bool stale=u.moving() && std::max(std::abs(u.path.back().x-miner.cell_x),std::abs(u.path.back().y-miner.cell_y))>2;
-                if (active(u) && (!u.moving() || u.wait_time>=3.0 || stale) &&
+                if (active(u) && !unit_berserk(i) && (!u.moving() || u.wait_time>=3.0 || stale) &&
                     std::max(std::abs(u.cell_x-miner.cell_x),std::abs(u.cell_y-miner.cell_y)) > 2 &&
                     (ability_frame()+static_cast<unsigned>(i))%30==0) {
                     // Follow to a free reachable neighbour, not the manager's

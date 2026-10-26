@@ -161,6 +161,7 @@ set(RA2_ENGINE_SOURCES
     ${RA2_ROOT}/engine/world_w6.cpp
     ${RA2_ROOT}/engine/world_w7.cpp
     ${RA2_ROOT}/engine/world_drain.cpp
+    ${RA2_ROOT}/engine/world_chaos.cpp
     ${RA2_ROOT}/engine/abil_w5_rules.cpp
     ${RA2_ROOT}/engine/world_mcv.cpp
     ${RA2_ROOT}/engine/world_sw.cpp      # W2-AN superweapons v2

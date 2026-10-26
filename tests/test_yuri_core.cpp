@@ -1409,7 +1409,7 @@ TEST_CASE("Disc drain: format-55 base worlds migrate without retaining an old se
  save::SaveFile parsed;REQUIRE(save::decode_save(bytes,parsed));
  CHECK(save::supported_version(parsed.header.version));REQUIRE(parsed.section(save::kTagWorld));
  REQUIRE(save::load_world(loaded,*parsed.section(save::kTagWorld)));
- CHECK_FALSE(save::supported_version(54));CHECK_FALSE(save::supported_version(57));
+ CHECK_FALSE(save::supported_version(54));CHECK_FALSE(save::supported_version(58));
 }
 
 TEST_CASE("Disc drain: flight reaches the building and interrupted links cannot survive a load") {
