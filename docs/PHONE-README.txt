@@ -191,3 +191,14 @@ TRAFFIC_SNAPSHOT context; share a report while the obstruction is still visible.
 DEBUG-AI is retained. Normal-AI expansion and Magnetron lift/drop are not claimed
 fixed. Save59 reads55/56/57/58; older APKs cannot read59. Keep save backups.
 See VERA20K-EFFECTS48.md for evidence, limitations and remaining acceptance.
+
+Build900049: deployed GI obeys its ground-only weapon; Guardian GI retains AA.
+Test Desolator deployment: radiation continues, targeted primary fire stops
+until undeploy. Check Ivan bomb clock and repair wrench using imported art.
+Tanya C4 is a distinct demolition timer, not the vanilla Ivan bomb clock.
+Check Boomer missile vertical raise before powered launch, plus Dreadnought/V3
+regressions. Report LAUNCHER/MISSILE/DEPLOY_FIRE diagnostics for failures.
+Bunker approach offset and turret display turns are smoother without changes
+to docking, collision, ROT or combat timing. Test all entry/exit directions.
+Magnetron lift/wave, full missile-launch fidelity and general mod support remain
+open; see YURI-FIDELITY49.md. Save59 layout unchanged. Back up older saves.
