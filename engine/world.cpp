@@ -6033,6 +6033,7 @@ void World::step(double dt) {
     // nullptr keeps step_combat's instant-hit path byte-identical.
     std::vector<ProjectileLaunch> launches;
     prepare_skirmish_mind_control();
+    step_disc_drains();
     const std::vector<MoveRequest> reqs = step_combat(*this, units_, buildings_, occ_, dt,
                                                       projectiles_enabled_ ? &launches : nullptr,
                                                       &combat_rng_);   // G-50 ROF jitter

@@ -353,7 +353,7 @@ void World::step_building_combat(double dt) {
         // [defenses.md §2] Powered=yes: offline while the house is short of power.
         b.def_offline = false;
         // W7-01-11: a Powered defence being erased has no power (HasPower=0).
-        if (b.power_off || (t.powered && b.w7.warp_unpowered)) {   // W5-E2: powered down by its owner -- no fire at all
+        if (b.power_off || building_disc_drained(bi) || (t.powered && b.w7.warp_unpowered)) {   // W5-E2: powered down by its owner -- no fire at all
             b.def_offline = true;
             b.def_target = -1;
             continue;

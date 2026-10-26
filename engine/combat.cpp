@@ -1230,6 +1230,9 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
                 u.attack_order = false;
             } else {
                 const int b_idx = u.target_building;
+                // A drain order is owned by the saved drain controller, not
+                // conventional damage or the laser's range/approach path.
+                if(world.disc_drain_order(u,b_idx))continue;
                 // Gap fix C: the slot that can hit this structure's armor (a
                 // pure-AA weapon or a 0 % Verses warhead cannot) [weapons.md §2].
                 const int ws = unit_weapon_for_building(u, b->armor_ix, b->bomb_frame >= 0,

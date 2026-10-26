@@ -246,7 +246,7 @@ Scene* make_resume_scene(bool no_audio) {
         std::vector<uint8_t> bytes;
         ra2engine::save::SaveFile f;
         const bool ok = ra2engine::save::read_file_bytes(path, bytes) && ra2engine::save::decode_save(bytes, f) &&
-                        f.header.version == ra2engine::save::kFormatVersion &&
+                        ra2engine::save::supported_version(f.header.version) &&
                         f.section(ra2engine::save::kTagWorld) && f.section(ra2engine::save::kTagConfig);
         SDL_Log("[lifecycle] autosave found (%s)", ok ? "valid" : "unreadable or another version");
         if (ok) return new ResumeScene(no_audio, std::move(f));

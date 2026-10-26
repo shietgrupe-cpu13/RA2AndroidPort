@@ -1328,3 +1328,105 @@ TEST_CASE("Yuri idle guard: special-unit passive acquisition remains disabled") 
   CHECK(w.units()[1].hp==100);
  }
 }
+
+namespace {
+ra2assets::Ini drain_rules() {
+ return ra2assets::Ini::parse("[VehicleTypes]\n0=DISK\n[BuildingTypes]\n0=PLANT\n1=REF\n2=DEF\n3=OTHER\n"
+ "[DISK]\nSecondary=DiskDrain\n[DiskDrain]\nDrainWeapon=yes\n"
+ "[PLANT]\nDrainable=yes\nPower=200\n[REF]\nDrainable=yes\nResourceDestination=yes\nPower=-50\n"
+ "[DEF]\nDrainable=yes\nPower=-50\n[OTHER]\nPower=100\n"
+ "[CombatDamage]\nDrainMoneyFrameDelay=30\nDrainMoneyAmount=30\n");
+}
+UnitCombat drain_disc() {
+ auto c=unit("DISK");c.is_vehicle=true;c.is_aircraft=true;c.balloon_hover=true;
+ c.damage=90;c.range=7;c.rof=80;c.omni_fire=true;
+ c.secondary.valid=true;c.secondary.damage=1;c.secondary.range=1.5;
+ c.secondary.ag=true;c.secondary.verses.assign(11,100);
+ c.cruise_altitude=500;c.climb_rate=100;c.flight_speed=2;c.flight_turn=30000;
+ return c;
+}
+void hover_disc(World& w,int i,int x,int y,int bi) {
+ auto& u=w.units()[i];u.fx=u.cell_x=x;u.fy=u.cell_y=y;
+ u.flight_state=FlightState::Cruising;u.altitude=500;u.has_flight_goal=false;
+ w.order_unit_attack_building(i,bi);
+}
+}
+TEST_CASE("Disc drain: plant shutdown is independently owned and recovers after last source stops") {
+ Rig r;World w(r.map);auto ini=drain_rules();w.configure_disc_drain(ra2assets::Rules::load(ini));
+ BuildingTypeDef plant;plant.id="PLANT";plant.power=200;plant.strength=500;
+ w.set_building_types({plant});const int b=w.add_building(0,10,10,2,2,1,500,0,0,true);
+ for(int i=0;i<2;++i){w.add_combat_unit(5,5,0,drain_disc());hover_disc(w,i,10,10,b);}
+ w.step_disc_drains();CHECK(w.disc_drains().size()==2);CHECK(w.house_blacked_out(1));
+ CHECK(w.blackout_frames(1)==0);CHECK(w.building_disc_drained(b));CHECK_FALSE(w.buildings()[b].power_off);
+ w.order_stop(0);CHECK(w.house_blacked_out(1));w.order_stop(1);CHECK_FALSE(w.house_blacked_out(1));
+ hover_disc(w,0,10,10,b);w.step_disc_drains();REQUIRE(w.house_blacked_out(1));
+ w.units()[0].alive=false;CHECK_FALSE(w.house_blacked_out(1));
+ CHECK(w.buildings()[b].hp==500);
+}
+TEST_CASE("Disc drain: refinery transfers are capped, deterministic and saved mid interval") {
+ Rig r;World w(r.map);auto ini=drain_rules();w.configure_disc_drain(ra2assets::Rules::load(ini));
+ BuildingTypeDef ref;ref.id="REF";ref.strength=500;
+ w.set_building_types({ref});int b=w.add_building(0,10,10,2,2,1,500,0,0,true);
+ w.enable_player_economy(0,100);w.enable_player_economy(1,35);
+ w.add_combat_unit(5,5,0,drain_disc());hover_disc(w,0,10,10,b);
+ for(int n=0;n<29;++n)w.step_disc_drains();CHECK(w.credits(0)==100);CHECK_FALSE(w.house_blacked_out(1));
+ World copy(r.map);REQUIRE(save::load_world(copy,save::save_world(w)));
+ for(int n=0;n<61;++n){w.step_disc_drains();copy.step_disc_drains();CHECK(save::save_world(w)==save::save_world(copy));}
+ CHECK(w.credits(0)==135);CHECK(w.credits(1)==0);CHECK(w.buildings()[b].hp==500);
+ CHECK(w.econ(0)->queues.credits()==135);
+}
+TEST_CASE("Disc drain: capture, selling, navigation and normal laser fallback") {
+ Rig r;World w(r.map);auto ini=drain_rules();w.configure_disc_drain(ra2assets::Rules::load(ini));
+ BuildingTypeDef d;d.id="DEF";d.power=-50;d.strength=500;
+ BuildingTypeDef other=d;other.id="OTHER";w.set_building_types({d,other});
+ int b=w.add_building(0,10,10,2,2,1,500,0,0,true);
+ int plain=w.add_building(1,15,15,1,1,1,500,0,0,true);
+ w.add_combat_unit(5,5,0,drain_disc());hover_disc(w,0,10,10,b);w.step_disc_drains();
+ CHECK(w.building_disc_drained(b));CHECK_FALSE(w.house_blacked_out(1));
+ w.buildings()[b].selling=true;CHECK_FALSE(w.building_disc_drained(b));w.step_disc_drains();CHECK(w.disc_drains().empty());
+ w.buildings()[b].selling=false;hover_disc(w,0,10,10,b);w.step_disc_drains();
+ w.buildings()[b].house=0;CHECK_FALSE(w.building_disc_drained(b));
+ w.step_disc_drains();CHECK(w.units()[0].target_building==-1);CHECK_FALSE(w.units()[0].attack_order);
+ w.buildings()[b].house=1;hover_disc(w,0,5,5,b);w.step_disc_drains();
+ CHECK_FALSE(w.building_disc_drained(b));CHECK(w.units()[0].has_flight_goal);
+ CHECK(w.units()[0].flight_goal_x==10);CHECK(w.units()[0].target_building==b);
+ CHECK_FALSE(w.disc_drain_order(w.units()[0],plain));
+ hover_disc(w,0,15,14,plain);w.step(1.0/15);
+ CHECK(w.buildings()[plain].hp<500);CHECK(w.disc_drains().empty());
+}
+
+TEST_CASE("Disc drain: format-55 base worlds migrate without retaining an old session link") {
+ Rig r;World old(r.map);auto c=drain_disc();old.add_combat_unit(5,5,0,c);
+ // Disabled drain writes the unchanged v55 base World field sequence.
+ const auto legacy=save::save_world(old);
+ World loaded(r.map);auto ini=drain_rules();loaded.configure_disc_drain(ra2assets::Rules::load(ini));
+ REQUIRE(save::load_world(loaded,legacy));CHECK(loaded.disc_drains().empty());
+ CHECK(loaded.units().size()==1);
+ save::SaveFile container;container.sections[save::kTagWorld]=legacy;
+ auto bytes=save::encode_save(container);bytes[8]=55;bytes[9]=bytes[10]=bytes[11]=0;
+ const auto crc=save::crc32(bytes.data(),bytes.size()-4);
+ for(int i=0;i<4;++i)bytes[bytes.size()-4+i]=static_cast<std::uint8_t>(crc>>(8*i));
+ save::SaveFile parsed;REQUIRE(save::decode_save(bytes,parsed));
+ CHECK(save::supported_version(parsed.header.version));REQUIRE(parsed.section(save::kTagWorld));
+ REQUIRE(save::load_world(loaded,*parsed.section(save::kTagWorld)));
+ CHECK_FALSE(save::supported_version(54));CHECK_FALSE(save::supported_version(57));
+}
+
+TEST_CASE("Disc drain: flight reaches the building and interrupted links cannot survive a load") {
+ Rig r;World w(r.map);auto ini=drain_rules();w.configure_disc_drain(ra2assets::Rules::load(ini));
+ BuildingTypeDef plant;plant.id="PLANT";plant.strength=500;plant.power=200;
+ w.set_building_types({plant});int b=w.add_building(0,10,10,2,2,1,500,0,0,true);
+ w.add_combat_unit(5,5,0,drain_disc());w.order_unit_attack_building(0,b);
+ for(int n=0;n<600 && !w.building_disc_drained(b);++n)w.step(1.0/15);
+ REQUIRE(w.building_disc_drained(b));CHECK(w.buildings()[b].hp==500);
+ CHECK(w.units()[0].cell_x>=10);CHECK(w.units()[0].cell_x<12);
+ World copy(r.map);REQUIRE(save::load_world(copy,save::save_world(w)));
+ for(int n=0;n<90;++n){w.step(1.0/15);copy.step(1.0/15);}
+ CHECK(save::save_world(w)==save::save_world(copy));
+ w.group_move(0,{0},2,2);CHECK_FALSE(w.building_disc_drained(b));w.step_disc_drains();
+ CHECK(w.disc_drains().empty());
+ REQUIRE(save::load_world(copy,save::save_world(w)));CHECK_FALSE(copy.house_blacked_out(1));
+ hover_disc(w,0,10,10,b);w.step_disc_drains();REQUIRE_FALSE(w.disc_drains().empty());
+ auto& links=const_cast<std::vector<DrainLink>&>(w.disc_drains());links[0].unit=9999;
+ CHECK_FALSE(save::load_world(copy,save::save_world(w)));
+}

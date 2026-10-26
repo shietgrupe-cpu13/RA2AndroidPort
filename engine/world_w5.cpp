@@ -48,6 +48,7 @@ void World::arm_w5(const RulesW5& rules, const std::map<std::string, UnitProfile
 // FUN_004555C0]: offline at low power unless two or more Tesla troopers
 // overpower it.
 bool World::w5_power_online(int b_idx) const {
+    if(building_disc_drained(b_idx))return false;
     const Building& b = buildings_[(std::size_t)b_idx];
     if (b.type < 0 || b.type >= (int)btypes().size()) return true;
     const BuildingTypeDef& t = btypes()[(std::size_t)b.type];

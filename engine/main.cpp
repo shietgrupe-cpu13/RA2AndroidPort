@@ -1473,6 +1473,7 @@ ra2engine::AbilityRules resolve_ability_rules(const Rules& rules, const Ini& ini
 // Called by GameScene (interactive) and the --demo-abilities gate ONLY.
 void wire_abilities(ra2engine::World& world, const Rules& rules, const Ini& ini) {
     world.set_ability_rules(resolve_ability_rules(rules, ini));
+    world.configure_disc_drain(rules);
     std::vector<std::string> ids = {"DRON", "DESO", "CLEG", "TANY", "GHOST", "IVAN", "TERROR", "FV"};
     // W2-SK-17/18: the Demolition Truck (Suicide Demobomb + DeathWeapon), the
     // Apocalypse (Explodes=yes) and both attack dogs (ParasiteDog warhead,
@@ -8130,7 +8131,7 @@ private:
         std::vector<uint8_t> bytes;
         ra2engine::save::SaveFile f;
         if (!ra2engine::save::read_file_bytes(path, bytes) || !ra2engine::save::decode_save(bytes, f) ||
-            f.header.version != ra2engine::save::kFormatVersion ||
+            !ra2engine::save::supported_version(f.header.version) ||
             !f.section(ra2engine::save::kTagWorld) || !f.section(ra2engine::save::kTagConfig)) {
             sld_.open(SaveLoadDialog::Load, "");
             sld_.set_message("COULD NOT LOAD THAT SAVED GAME");
@@ -10056,7 +10057,7 @@ void MainMenuScene::handle(const ra2engine::InputEvent& ev) {
             ra2engine::save::SaveFile f;
             if (ra2engine::save::read_file_bytes(sld_.path(), bytes) &&
                 ra2engine::save::decode_save(bytes, f) &&
-                f.header.version == ra2engine::save::kFormatVersion &&
+                ra2engine::save::supported_version(f.header.version) &&
                 f.section(ra2engine::save::kTagWorld) && f.section(ra2engine::save::kTagConfig)) {
                 next_ = defer_load_scene(no_audio_, std::move(f));   // W2-AR-02/-10
             } else {
@@ -19114,7 +19115,7 @@ SlResult sl_run_skirmish(SlSkirmishEnv& e, int N, int M) {
     ra2engine::save::SaveFile lf;
     bool loaded = wrote && ra2engine::save::read_file_bytes(path, bytes) &&
                   ra2engine::save::decode_save(bytes, lf) &&
-                  lf.header.version == ra2engine::save::kFormatVersion &&
+                  ra2engine::save::supported_version(lf.header.version) &&
                   lf.header.frame == N && lf.section(ra2engine::save::kTagWorld) &&
                   lf.section(ra2engine::save::kTagScene) && lf.section(ra2engine::save::kTagConfig);
     if (loaded) {

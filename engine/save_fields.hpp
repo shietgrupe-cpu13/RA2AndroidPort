@@ -19,6 +19,18 @@
 
 namespace ra2engine {
 
+template<class Ar> void fields(Ar& ar,DrainType& v) {
+    save::io(ar,v.enabled);save::io(ar,v.refinery);save::io(ar,v.power);
+}
+template<class Ar> void fields(Ar& ar,DrainLink& v) {
+    save::io(ar,v.unit);save::io(ar,v.building);save::io(ar,v.source_house);
+    save::io(ar,v.target_house);save::io(ar,v.frames);
+}
+template<class Ar> void fields(Ar& ar,DrainState& v) {
+    save::io(ar,v.enabled);save::io(ar,v.amount);save::io(ar,v.delay);
+    save::io(ar,v.sources);save::io(ar,v.targets);save::io(ar,v.links);
+}
+
 // The single friend every class with private save-state names. Static members
 // only; visitors for private members and private nested types live here.
 struct SaveAccess {
@@ -312,6 +324,14 @@ struct SaveAccess {
         save::io_unhashed(ar, w.crush_grid_); save::mark(ar, "crush_grid_");  // P4 derived scratch (the amphib_passable_ precedent)
         save::io_unhashed(ar, w.crush_leak_); save::mark(ar, "crush_leak_");  // W9-05: crush_grid()/crush_leak() rebuild them
         save::io(ar, w.sw_quarry_); save::mark(ar, "sw_quarry_");   // W5-A AI SW PreferredTarget (save v21)
+        // v56 append-only extension. An old v55 World ends precisely here;
+        // keep freshly configured rules, but never retain links from a prior
+        // session when migrating it. Other section layouts are unchanged.
+        if constexpr(Ar::kLoading) {
+            if(ar.at_end())w.drain_.links.clear();
+            else save::io(ar,w.drain_);
+        } else if(w.drain_.enabled)save::io(ar,w.drain_);
+        save::mark(ar,"drain_");
     }
 
     // --- MapTriggerSystem: every member except d_ (the parsed map data, a

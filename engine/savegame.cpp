@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <system_error>
+#include <set>
 
 #include "save_fields.hpp"
 
@@ -175,7 +176,7 @@ bool decode_save(const std::vector<std::uint8_t>& bytes, SaveFile& out, bool hea
         if (hr.ok()) out.header = h;
         out.header.version = version;
     }
-    if (version != kFormatVersion || header_only) return true;
+    if (!supported_version(version) || header_only) return true;
     // W2-AR-20: verify the CRC-32 trailer, then parse the body without it.
     if (bytes.size() < 4 + 12) return false;
     const std::size_t body_n = bytes.size() - 4;
@@ -262,7 +263,7 @@ std::vector<SlotEntry> list_saves(const std::string& dir) {
             e.damaged = true;   // W2-AR-21: listed as damaged, not hidden
         } else {
             e.header = f.header;
-            e.wrong_version = (f.header.version != kFormatVersion);
+            e.wrong_version = (!supported_version(f.header.version));
             // Current-version files are fully checked (CRC + framing) so a
             // corrupt one is flagged in the list, not discovered on load.
             SaveFile full;
@@ -345,6 +346,12 @@ bool SaveAccess::valid_world(const World& w, std::string* why) {
     auto unit_ix = [&](int i) { return i >= -1 && i < nu; };
     auto bld_ix = [&](int i) { return i >= -1 && i < nb; };
     auto house_ix = [&](int h) { return h >= 0 && h < kMaxHouses; };
+    if(w.drain_.delay<1 || w.drain_.amount<0 || w.drain_.links.size()>w.units_.size())return bad("drain configuration");
+    std::set<int> drain_sources;
+    for(const auto& d:w.drain_.links)
+        if(d.unit<0 || d.unit>=nu || d.building<0 || d.building>=nb ||
+           !house_ix(d.source_house) || !house_ix(d.target_house) || d.frames<0 ||
+           d.frames>=w.drain_.delay || !drain_sources.insert(d.unit).second)return bad("drain link");
     for(const auto& b:w.buildings_)if(b.bunker_exit_left < -1 || b.bunker_exit_left>18)
         return bad("bunker lowering timer");
     for (int i = 0; i < nu; ++i) {
