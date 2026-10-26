@@ -15,7 +15,7 @@ inline void probe_world(const World& w) {
         if (!u.alive || u.die_time >= 0) continue;
         const bool finite = std::isfinite(u.fx) && std::isfinite(u.fy) && std::isfinite(u.wait_time);
         const bool path_ok = u.path_idx <= u.path.size();
-        const bool stalled = u.moving() && u.wait_time >= 3.0;
+        const bool stalled = u.moving() && u.wait_time >= 1.0;
         if (!finite || !path_ok) {
             ++invalid;
             if (invalid <= 8) note("CHECK unit=%zu finite=%d path_index=%zu path_size=%zu", i, finite, u.path_idx, u.path.size());
@@ -26,7 +26,7 @@ inline void probe_world(const World& w) {
             ++invalid;
             if (invalid <= 8) note("CHECK unit=%zu invalid_slave_manager=%d", i, manager);
         }
-        if (stalled) ++blocked;
+        if (u.moving() && u.wait_time >= 3.0) ++blocked;
         const bool relevant = u.image == "SLAV" || u.image == "SMIN" || u.image == "YTNK" || u.image=="DISK" || u.image=="LTNK" || u.image=="BRUTE" || u.image=="CAOS" || u.image=="TELE";
         if ((relevant || stalled) && emitted++ < 24) {
             note("UNIT unit=%zu image=%s cell=%d,%d pos=%.3f,%.3f level=%d deck=%d moving=%d path=%zu/%zu wait_s=%.3f harv=%d ore_target=%d,%d cargo=%.1f,%.1f slave_manager=%d transport=%d target=%d building_target=%d",
@@ -69,6 +69,24 @@ inline void probe_world(const World& w) {
                     i, p.x, p.y, u.path.size()-u.path_idx, w.cell_level(u.cell_x,u.cell_y), w.cell_level(p.x,p.y),
                     current ? static_cast<unsigned>(current->tile) : 0, current ? static_cast<unsigned>(current->subtile) : 0,
                     next ? static_cast<unsigned>(next->tile) : 0, next ? static_cast<unsigned>(next->subtile) : 0);
+                if(stalled) {
+                    const auto& occ=w.occupancy();
+                    int blocker=occ.at(p.x,p.y,u.on_deck);
+                    if(blocker<0 && occ.subcells())
+                        for(int spot=Occupancy::kFirstSpot;spot<Occupancy::kFirstSpot+Occupancy::kSpots;++spot) {
+                            const int candidate=occ.spot_unit(p.x,p.y,spot,u.on_deck);
+                            if(candidate>=0 && candidate!=static_cast<int>(i)){blocker=candidate;break;}
+                        }
+                    // Snapshot on the mover's current plane, not a claim that
+                    // this is the eventual landing plane at a bridge entrance.
+                    if(blocker>=0 && blocker<static_cast<int>(units.size())) {
+                        const auto& b=units[blocker];
+                        note("TRAFFIC_SNAPSHOT unit=%zu blocker=%d image=%s allied=%d moving=%d wait_s=%.3f target=%d building_target=%d frozen=%d deployed=%d enter=%d path_delay=%.2f blockage=%.2f tries=%d current_plane=%d",
+                            i,blocker,b.image.c_str(),w.allied_with(u.house,b.house),b.moving(),b.wait_time,
+                            b.target,b.target_building,b.frozen,b.deployed,b.enter_target,u.loco.path_delay,
+                            u.loco.blockage,u.loco.temp_tries,u.on_deck);
+                    }
+                }
             }
         }
     }
@@ -100,6 +118,13 @@ inline void probe_world(const World& w) {
     for(const auto& status:w.chaos_state().active) {
         if(berserk_samples++>=16)break;
         note("BERSERK unit=%d frames_left=%d active=%d",status.first,status.second.frames,w.unit_berserk(status.first));
+    }
+    for(int house=0;house<std::min(w.house_count(),8);++house) {
+        const auto* cfg=w.ai_config(house);const auto* state=w.ai_state(house);
+        if(cfg && state)note("AI_BASE house=%d mode=%s credits=%.1f plan=%zu pending=%d,%d next_pass_s=%.2f recovery_building=%d recovery_unit=%d",
+            house,debug_ai_mode(cfg->difficulty)?"DEBUG-AI":"normal",w.credits(house),state->plan.size(),
+            state->pending[0],state->pending[1],std::max(0.0,state->build_gate-state->build_clock),
+            state->raise_building,state->raise_unit);
     }
     for (int house=0;house<std::min(w.house_count(),16);++house)
         for (auto type:w.sw_types(house)) if (const auto* sw=w.sw_state(house,type))

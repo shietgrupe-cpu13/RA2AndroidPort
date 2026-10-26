@@ -215,6 +215,7 @@ TEST_CASE("diagnostics: unit probes preserve saved state and catch broken refere
     worker.w7.slave_manager=999;
     worker.path={{2,2},{3,2}}; worker.path_idx=1; worker.wait_time=4;
     worker.bales_ore=3;
+    w.add_combat_unit(3,2,0,unit("BLOCKER"));
     BuildingTypeDef aa;aa.id="NASAM";aa.armed=true;
     aa.weapon[0].valid=true;aa.weapon[0].ag=false;aa.weapon[0].aa=true;
     w.set_economy({aa},{},OreValues{},1000,0,0);
@@ -231,6 +232,7 @@ TEST_CASE("diagnostics: unit probes preserve saved state and catch broken refere
     CHECK(log.find("invalid_slave_manager=999")!=std::string::npos);
     CHECK(log.find("blocked_over_3s=1")!=std::string::npos);
     CHECK(log.find("ROUTE unit=0 next=3,2")!=std::string::npos);
+    CHECK(log.find("TRAFFIC_SNAPSHOT unit=0 blocker=1 image=BLOCKER allied=1")!=std::string::npos);
     CHECK(log.find("ground=0 air=1")!=std::string::npos);
     CHECK(log.find("ACQUIRE unit=0 mission=")!=std::string::npos);
     worker.path_idx=900;
