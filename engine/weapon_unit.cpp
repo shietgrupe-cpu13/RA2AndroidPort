@@ -31,7 +31,11 @@ const WeaponSlot& secondary_view(const Unit& u) {
 
 namespace {
 int unit_weapon_for_unit_base(const Unit& u, const Unit& v) {
-    if (u.deploy_fire && u.deployed) return u.deploy_fire_slot == 1 && u.w2.valid ? 1 : 0;
+    if (deployment_owns_fire(u)) return -1;
+    if (u.deploy_fire && u.deployed) {
+        const int slot=u.deploy_fire_slot==1 && u.w2.valid ? 1 : 0;
+        return slot_can_target(slot==1?secondary_view(u):primary_view(u),unit_airborne(v),v.armor_ix)?slot:-1;
+    }
     // W7-01-06 [RE: InfantryClass::SelectWeapon 0x521610]: an undeployed
     // DeployFire infantry (GI, Guardian GI) has weapon 0 only -- the
     // undeployed GGI never fires its anti-air MissileLauncher.
@@ -75,6 +79,7 @@ int unit_weapon_for_unit(const Unit& u, const Unit& v) {
 }
 
 bool unit_primary_can_fire_at(const Unit& u, const Unit& v) {
+    if (deployment_owns_fire(u)) return false;
     if (!slot_can_target(primary_view(u), unit_airborne(v), v.armor_ix)) return false;
     const int slot = an_naval_slot(u.an.t, 0, u.w2.valid, v.an.naval_cell || (v.is_naval && v.an.in_water),
                                    v.an.t.underwater, v.an.submerged,
@@ -85,9 +90,13 @@ bool unit_primary_can_fire_at(const Unit& u, const Unit& v) {
 }
 
 int unit_weapon_for_building(const Unit& u, int armor_ix, bool target_bombed, bool in_water) {
+    if (deployment_owns_fire(u)) return -1;
     int want;
     if (u.w7.t.magnetic) want=u.w2.valid && slot_can_target(secondary_view(u),false,armor_ix) ? 1 : -1;
-    else if (u.deploy_fire && u.deployed) want = u.deploy_fire_slot == 1 && u.w2.valid ? 1 : 0;
+    else if (u.deploy_fire && u.deployed) {
+        const int slot=u.deploy_fire_slot==1 && u.w2.valid ? 1 : 0;
+        want=slot_can_target(slot==1?secondary_view(u):primary_view(u),false,armor_ix)?slot:-1;
+    }
     else if (u.deploy_fire && u.is_infantry) want = slot_can_target(primary_view(u), false, armor_ix) ? 0 : -1;   // W7-01-06
     else if (!u.w2.valid) want = slot_can_target(primary_view(u), false, armor_ix) ? 0 : -1;
     else want = choose_weapon(primary_view(u), secondary_view(u), false, armor_ix);

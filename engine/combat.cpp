@@ -1204,7 +1204,7 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
         // (b3) P4 [RE: abilities.md §C1/§C2/§A]: a FROZEN unit (warping in,
         // being erased, deployed) neither fires, acquires nor pursues.
         // Inert: frozen is false unless a P4 profile is bound.
-        if (u.frozen) continue;
+        if (u.frozen || deployment_owns_fire(u)) continue;
         // W2-AN-02/12: fixed-wing aircraft and missiles fight in
         // World::step_air_naval (sorties / spawner strikes), not here.
         if (u.an.t.fixed_wing || u.an.t.missile) continue;

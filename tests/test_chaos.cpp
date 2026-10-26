@@ -10,6 +10,7 @@
 #include "gas_emitter.hpp"
 #include "disk_laser.hpp"
 #include "defense_muzzle.hpp"
+#include "weapon_unit.hpp"
 #include "skirmish_lobby.hpp"
 using ra2assets::Rules;
 #include "../engine/ai_side_catalog.inc"
@@ -31,6 +32,34 @@ UnitCombat type(const char* id,int damage=0) {
 }
 void drone(World& w) {auto c=type("CAOS",600);c.range=3;c.cell_spread=3;c.omni_fire=true;
  c.verses={100,100,100,50,50,50,0,0,0,100,100};w.add_combat_unit(10,10,0,c);}
+}
+TEST_CASE("Deployment legality: GI cannot fire at air while Guardian GI retains AA") {
+ ChaosRig rig;World w(rig.map);auto gi=type("GI",15);gi.is_vehicle=false;gi.is_infantry=true;
+ gi.primary_aa=false;gi.deploy_fire=true;gi.deploy_fire_slot=1;
+ gi.secondary.valid=true;gi.secondary.damage=25;gi.secondary.range=5;
+ gi.secondary.ag=true;gi.secondary.aa=false;gi.secondary.verses.assign(11,100);
+ w.add_combat_unit(10,10,0,gi);auto plane=type("AIR");plane.is_aircraft=true;
+ w.add_combat_unit(12,10,1,plane);w.units()[1].altitude=100;
+ REQUIRE(w.order_deploy(0));CHECK(unit_weapon_for_unit(w.units()[0],w.units()[1])==-1);
+ w.units()[0].w2.aa=true;CHECK(unit_weapon_for_unit(w.units()[0],w.units()[1])==1);
+ w.units()[0].w2.aa=false;w.units()[1].altitude=0;
+ CHECK(unit_weapon_for_unit(w.units()[0],w.units()[1])==1);
+ w.units()[0].w2.verses.assign(11,0);
+ CHECK(unit_weapon_for_unit(w.units()[0],w.units()[1])==-1);
+ CHECK(unit_weapon_for_building(w.units()[0],0)==-1);
+}
+TEST_CASE("Deployment legality: area deployment cannot leak targeted primary fire with a stale frozen cache") {
+ ChaosRig rig;World w(rig.map);w.add_combat_unit(10,10,0,type("DESO",125));
+ w.add_combat_unit(12,10,1,type("TARGET"));
+ auto& u=w.units()[0];u.deployed=true;u.frozen=false;u.abil.deployer=true;
+ u.abil.deploy.valid=true;u.abil.deploy.rad_level=500;
+ CHECK(unit_weapon_for_unit(u,w.units()[1])==-1);CHECK(unit_weapon_for_building(u,0)==-1);
+ CHECK_FALSE(unit_primary_can_fire_at(u,w.units()[1]));
+ w.order_unit_attack(0,1);for(int f=0;f<20;++f)w.step(1.0/15);
+ CHECK(w.units()[1].hp==1000);CHECK(w.units()[0].fire_flash==0);
+ w.units()[0].deployed=false;
+ for(int f=0;f<20;++f)w.step(1.0/15);
+ CHECK(w.units()[1].hp<1000);
 }
 TEST_CASE("DEBUG-AI: explicit lobby mode survives settings and config conversion") {
  LobbyState st; lobby_set_ai(st,1,kLobbyAiDebug);
