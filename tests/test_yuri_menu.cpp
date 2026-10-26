@@ -7,6 +7,21 @@
 #include "asset_fixture.hpp"
 #include "ra2assets/pcx.hpp"
 #include "ra2assets/shp.hpp"
+#include "sidebar_assets.hpp"
+TEST_CASE("Yuri sidebar: stock expansion overrides inherit complete Soviet chrome") {
+ if(!ra2fixture::assets_available() || !ra2fixture::ra2_available())return;
+ const auto base=ra2fixture::mix_by_name("ra2.mix").open_nested("sidec02.mix");
+ const auto overlay=ra2engine::yuri_sidebar_overrides(ra2fixture::mix_by_name("ra2md.mix"));
+ // The original resolver incorrectly required a complete sidec03 archive.
+ CHECK(overlay.find(std::string("top.shp"))==nullptr);
+ for(const auto* name:{"top.shp","side1.shp","side2.shp","tab00.shp","tab01.shp","tab02.shp","tab03.shp","powerp.shp","credits.shp","gclock2.shp"}) {
+  const auto* e=base.find(std::string(name));REQUIRE(e);
+  CHECK(ra2assets::ShpFile::load(base.read(*e)).count()>0);
+ }
+ const auto* radar=overlay.find(std::string("radary.shp"));REQUIRE(radar);
+ CHECK(ra2assets::ShpFile::load(overlay.read(*radar)).count()>0);
+ const auto* palette=base.find(std::string("sidebar.pal"));REQUIRE(palette);CHECK(palette->size==768);
+}
 TEST_CASE("Yuri presentation: retail flag loading image and palette decode from verified archives") {
  if(!ra2fixture::assets_available() || !ra2fixture::ra2_available())return;
  const auto local=ra2fixture::mix_by_name("ra2md.mix").open_nested("localmd.mix");

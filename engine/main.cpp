@@ -58,6 +58,8 @@ ra2engine::ProjectilePresentation g_projectile_motion;
 #include "unit_presentation.hpp"
 #include "skirmish_layout.hpp"
 #include "faction_art.hpp"
+#include "sidebar_assets.hpp"
+#include "gas_emitter.hpp"
 #include "disk_laser.hpp"
 ra2engine::UnitPresentation g_unit_motion;
 #include "shell_layout.hpp"
@@ -2971,9 +2973,9 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
                     try { auto found=ra2.open_nested(name); if(complete(found)) return found; } catch(const std::exception&) {}
                     try { auto found=MixFile::open_path(env_install_dir()+name); if(complete(found)) return found; } catch(const std::exception&) {}
                 }
-                // Incomplete installs retain usable classic chrome and hit boxes.
-                std::cerr<<"[sidebar] Yuri archive absent; using Allied fallback\n";
-                g_sidebar_mix="sidec01.mix";ra2engine::set_sidebar_style(0);
+                // Stock Yuri reuses Soviet chrome with a small expansion override.
+                std::cerr<<"[sidebar] Yuri uses Soviet base plus expansion overrides\n";
+                return ra2.open_nested("sidec02.mix");
             }
             return ra2.open_nested(g_sidebar_mix);
         }();
@@ -2983,7 +2985,18 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
         } else {
             std::cerr << "[building] " << g_sidebar_mix << "/sidebar.pal missing; chrome uses cameo.pal\n";
         }
+        std::unique_ptr<MixFile> yuri_override;
+        if (std::string(g_sidebar_mix)=="sidec03.mix") {
+            try {
+                auto md=MixFile::open_path(env_install_dir()+"ra2md.mix");
+                yuri_override=std::make_unique<MixFile>(ra2engine::yuri_sidebar_overrides(md));
+            } catch(const std::exception& ex) {
+                std::cerr<<"[sidebar] Yuri overrides unavailable: "<<ex.what()<<"\n";
+            }
+        }
         auto load_sb = [&](const char* fn) -> ShpFile {
+            if(yuri_override) if(const auto* e=yuri_override->find(std::string(fn)))
+                return ShpFile::load(yuri_override->read(*e));
             const MixEntry* e = sb.find(std::string(fn));
             if (!e) throw std::runtime_error(std::string("sidebar SHP missing: ") + fn);
             return ShpFile::load(sb.read(*e));
@@ -7781,6 +7794,7 @@ public:
         const ra2engine::World::Side s = world_.house_side(local_house_);
         pres_.init(dir_, ra2_, audio_, audio_.enabled, rules_, rules_ini_, art_ini_, {&ur_.defs, &ur_ai_.defs},
                    s == ra2engine::World::Side::Soviet ? 1 : s == ra2engine::World::Side::Yuri ? 2 : 0);
+        for(const auto* v:vlist_) if(v) pres_.register_gas_hull(*v);
         {   // W2-UI-14: the 0xB8 score list = RA2 theme.ini [Themes] with
             // Normal != no, by CSF Name (local.mix/theme.ini).
             std::vector<std::string> t;

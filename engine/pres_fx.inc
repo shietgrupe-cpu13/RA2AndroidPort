@@ -135,6 +135,7 @@ public:
         double ox_px = 0;        // extra screen-x offset (FLH muzzle point)
         int house = -1;          // W3-B owner (AltPalette remap), -1 none
         int delay = 1;           // W3-B per-instance delay (RandomRate), else the type's
+        bool object_layer = false; // per-instance vent emission; type Flat is unchanged
         bool hold = false;       // W3-B: stays on its last frame (DestroyAnim ruins)
         std::shared_ptr<ra2assets::Palette> own_pal;   // W4: the building's art Palette= (lib)
     };
@@ -779,11 +780,11 @@ public:
 
     // Spawns `name` at a cell-space point; returns the type (for the Report).
     const FxAnimType* spawn(const std::string& name, double fx, double fy, int level, double lift_px,
-                            double ox_px = 0.0, int house = -1) {
+                            double ox_px = 0.0, int house = -1, bool object_layer = false) {
         const FxAnimType* t = type(name);
         if (!t || t->frames <= 0) return nullptr;
         if (t->detail > g_detail_level) return nullptr;   // W5-E Visual Details
-        anims_.push_back(Anim{t, fx, fy, level, lift_px, 0, ox_px, house, instance_delay(*t, fx, fy)});
+        anims_.push_back(Anim{t, fx, fy, level, lift_px, 0, ox_px, house, instance_delay(*t, fx, fy), object_layer});
         if ((t->crater || t->scorch) && g_smudge_hook && lift_px < 30.0) g_smudge_hook(t->crater, fx, fy);
         return t;
     }
@@ -819,7 +820,7 @@ public:
             if (a.hold || a.t->frame_at(a.age, a.delay) >= 0) continue;
             if (!a.t->next.empty())
                 if (const FxAnimType* n = type(a.t->next))
-                    next.push_back(Anim{n, a.sx, a.sy, a.level, a.lift_px, 0, a.ox_px, a.house, instance_delay(*n, a.sx, a.sy)});
+                    next.push_back(Anim{n, a.sx, a.sy, a.level, a.lift_px, 0, a.ox_px, a.house, instance_delay(*n, a.sx, a.sy), a.object_layer});
             a.t = nullptr;
         }
         anims_.erase(std::remove_if(anims_.begin(), anims_.end(), [](const Anim& a) { return !a.t; }),
@@ -837,7 +838,7 @@ public:
     void draw(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2engine::Camera& cam, int W,
               int H, int pass = 1) {
         for (const Anim& a : anims_) {
-            if (a.t->flat != (pass == 0)) continue;
+            if ((a.t->flat && !a.object_layer) != (pass == 0)) continue;
             if (split_light_ && pass != 0 && a.t->normal_light != (pass == 2)) continue;
             int fr = a.t->frame_at(a.age, a.delay);
             if (fr < 0 && a.hold) fr = std::max(a.t->start, a.t->end - 1);

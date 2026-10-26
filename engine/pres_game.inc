@@ -6,12 +6,14 @@
 
 class Presentation {
     bool miner_role_alerts_=true;
+    std::map<std::string,double> gas_hull_top_;
 public:
     // side_ix: 0 Allied, 1 Soviet (Russian clips), 2 Yuri.
     void init(const std::string& dir, const ra2assets::MixFile& ra2, AudioSystem& audio, bool audio_on,
               const Rules& rules, const Ini& rules_ini, const Ini& art_ini,
               const std::vector<const std::vector<ra2engine::UnitTypeDef>*>& defs, int side_ix) {
         audio_ = &audio;
+        gas_hull_top_.clear();
         const auto role_alert=read_settings_doc(settings_file_path()).get("Audio","MinerRoleAlerts");
         miner_role_alerts_=role_alert?ra2engine::ww_parse_bool(*role_alert,true):true;
         g_bld_events.clear();
@@ -147,6 +149,12 @@ public:
         g_chutes.clear();             // W5-PRES R-122
     }
 
+    void register_gas_hull(const VehicleAssets& v) {
+        if(!v.vsrc) return;
+        double top=0;
+        for(const auto& s:v.vsrc->hull.sections) top=std::max(top,double(s.max_bounds[2]));
+        gas_hull_top_[v.combat.image]=top;
+    }
     PresAudio& sound() { return snd_; }
     // W3-FX: the trigger visuals (campaign_visuals.inc) drive these.
     PresFx& fx() { return fx_; }
@@ -863,8 +871,15 @@ private:
         if (wp->id.empty()) wp = fx_.weapon(u.image);
         if (!wp) return;
         if(w.chaos_weapon(u)) {
-            // AreaFire is emitted at the Drone, at ground height, never the victim.
-            impact(u,u.w_damage,u.fx,u.fy,pres_unit_fx_level(w,u),0);
+            // The blast remains source-centred in simulation. Only the cloud
+            // is raised to the upper central vent of the imported voxel.
+            const auto it=gas_hull_top_.find(u.image);
+            const auto vent=ra2engine::gas_vent_projection(it==gas_hull_top_.end()?0:it->second,pres_unit_ramp(u));
+            if(!wp->anim_list.empty()) {
+                const int index=std::clamp(u.w_damage/25,0,int(wp->anim_list.size())-1);
+                if(const auto* a=fx_.spawn(wp->anim_list[index],u.fx,u.fy,pres_unit_fx_level(w,u),vent[1],vent[0],u.house,true))
+                    snd_.play_at(a->report,u.fx,u.fy,"gas");
+            }
             return;
         }
         double ox = 0, lift = 0;
