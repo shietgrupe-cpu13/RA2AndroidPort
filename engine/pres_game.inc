@@ -134,6 +134,7 @@ public:
         }
     }
     ~Presentation() {
+        for(auto& kv:drain_loops_)kv.second.update(snd_,false,0,0);
         for (auto& loop : shot_loops_) loop.update(snd_,false,0,0);
         for (auto& loop : building_shot_loops_) loop.update(snd_,false,0,0);
         if (g_shroud_shp == shroud_.get()) g_shroud_shp = nullptr;
@@ -261,6 +262,7 @@ public:
         fire_seen_ = fe.size();
         unit_fx_tick(w, fresh);
         defense_fire_tick(w, fresh);   // muzzle / beam / report on the tick of the shot
+        disc_drain_tick(w);
         fragment_fx(w);                // W7-12-07 shrapnel beams
         pres_bld_anim_tick(w, ba, fx_, g_pres_tick, fresh, units_seen_, bld_seen_,
                            [&](int h) { return w.credits(h); });   // L2: every house's wallet
@@ -285,6 +287,35 @@ public:
     }
 
 private:
+    std::map<int,ra2engine::WeaponSoundLoop> drain_loops_;
+    std::set<int> drain_attached_;
+    void disc_drain_tick(const ra2engine::World& w) {
+        std::set<int> active;
+        const std::string anim=rules_ini_ ? pres_clean(rules_ini_->get("CombatDamage","DrainAnimationType")) : std::string();
+        for(const auto& link:w.disc_drains()) {
+            if(!w.building_disc_drained(link.building) || link.unit<0 ||
+               link.unit>=static_cast<int>(w.units().size()))continue;
+            const auto& u=w.units()[link.unit];active.insert(link.unit);
+            if(!u.alive || u.die_time>=0 || u.house!=link.source_house ||
+               !w.disc_drain_order(u,link.building) || u.has_flight_goal) {
+                active.erase(link.unit);continue;
+            }
+            if(!drain_attached_.count(link.unit) && !anim.empty()) {
+                fx_.attach(link.unit,anim,0,true);
+                drain_attached_.insert(link.unit);
+            }
+            const FxAnimType* type=anim.empty()?nullptr:fx_.type(anim);
+            auto& loop=drain_loops_[link.unit];
+            if(type && !type->report.empty() && !loop.handle)
+                loop.shot(snd_,type->report,u.fx,u.fy);
+            loop.update(snd_,true,u.fx,u.fy);
+        }
+        for(auto it=drain_loops_.begin();it!=drain_loops_.end();)
+            if(!active.count(it->first)) {
+                it->second.update(snd_,false,0,0);fx_.detach(it->first,true);
+                drain_attached_.erase(it->first);it=drain_loops_.erase(it);
+            } else ++it;
+    }
     // ---- G-08 (draw half) action cursors from MOUSE.SHP ---------------------
     // MouseCursorType ids (YRpp GeneralDefinitions.h) index the 86-entry
     // descriptor table at gamemd.exe 0x0082C038 {start, count, rate, hotX,

@@ -327,12 +327,13 @@ public:
     // the controller -> victim link lines (house colour).
     struct Attached { const FxAnimType* t = nullptr; long age = 0; double lift = 0; };
     std::map<int, Attached> attached_;
-    void attach(int unit, const std::string& name, double lift) {
+    std::map<int, Attached> drain_attached_;
+    void attach(int unit, const std::string& name, double lift, bool drain=false) {
         const FxAnimType* t = type(name);
         if (!t || t->frames <= 0) return;
-        attached_[unit] = Attached{t, 0, lift};
+        (drain ? drain_attached_ : attached_)[unit] = Attached{t, 0, lift};
     }
-    void detach(int unit) { attached_.erase(unit); }
+    void detach(int unit,bool drain=false) { (drain ? drain_attached_ : attached_).erase(unit); }
     struct Link { int from, to; SDL_Color c; };
     std::vector<Link> links_;
     void draw_attached(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2engine::Camera& cam, int W, int H) {
@@ -368,7 +369,8 @@ public:
             SDL_SetRenderDrawColor(ren, l.c.r, l.c.g, l.c.b, 255);
             SDL_RenderDrawLine(ren, ax, ay, bx, by);
         }
-        for (const auto& kv : attached_) {
+        for(const auto* attachments : {&attached_,&drain_attached_})
+        for (const auto& kv : *attachments) {
             if (kv.first < 0 || kv.first >= static_cast<int>(us.size())) continue;
             const ra2engine::Unit& u = us[static_cast<std::size_t>(kv.first)];
             if (!u.alive || u.die_time >= 0.0 || u.cargo_of >= 0) continue;
@@ -806,6 +808,7 @@ public:
         ++rand_tick_;
         ++beam_tick_;
         for (auto& kv : attached_) ++kv.second.age;   // W7-12-23
+        for (auto& kv : drain_attached_) ++kv.second.age;
         for (Beam& b : beams_) ++b.age;
         beams_.erase(std::remove_if(beams_.begin(), beams_.end(),
                                     [](const Beam& b) { return b.age >= b.life; }),
