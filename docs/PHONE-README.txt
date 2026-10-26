@@ -169,3 +169,12 @@ Build 900043: see docs/TOUCH-TEST43.txt for the stationary Gatling audio test.
 The correction covers cell Force Fire loop lifetime and low-power stopping;
 ordinary turret silence still needs phone verification with WEAPON_AUDIO logs.
 Existing bunker, building Force Fire, wall and touch behavior is preserved.
+
+Build 900047: DEBUG-AI is available in the skirmish opponent dropdown. Choose
+its country explicitly (including Yuri) to test an economy/base without attacks,
+military production, default defenses or offensive superweapons. Economic War
+Miners remain valid targets but do not fire back in this testing mode.
+Verify Yuri's sidebar/radar, Chaos Drone upper-centre gas on flat ground/slopes,
+and DEBUG-AI economy plus save/load. Save58 reads55/56/57; older APKs cannot
+read new58 saves. Disc discharge, Magnetron lifting and further Bunker polish
+remain research items. No physical-phone testing is claimed by the build.
