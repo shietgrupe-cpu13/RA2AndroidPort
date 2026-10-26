@@ -16,6 +16,41 @@
 
 namespace fs = std::filesystem;
 
+TEST_CASE("voxel lighting: memoization preserves the pre-change pixel corpus") {
+    // Independently generated assets; goldens frozen from a4577e9 before
+    // normal-light reuse. They establish output preservation, not PC parity.
+    ra2assets::VxlModel model;ra2assets::VxlSection section{};
+    section.name="body";section.size_x=section.size_y=40;section.size_z=24;section.scale=0.0625;
+    section.min_bounds[0]=section.min_bounds[1]=-20;section.min_bounds[2]=0;
+    section.max_bounds[0]=section.max_bounds[1]=20;section.max_bounds[2]=24;
+    section.voxels.resize(40*40*24);
+    for(std::size_t i=0;i<section.voxels.size();++i) {
+        auto& v=section.voxels[i];v.present=i%7!=0;v.normal=static_cast<uint8_t>(i%256);v.color=static_cast<uint8_t>(1+i%255);
+    }
+    model.sections.push_back(section);
+    ra2assets::HvaModel hva;hva.frame_count=2;hva.section_names={"body"};
+    hva.frames.resize(2,std::vector<ra2assets::HvaSectionXform>(1));
+    for(auto& f:hva.frames)f[0].transform[0][0]=f[0].transform[1][1]=f[0].transform[2][2]=1;
+    hva.frames[1][0].transform[0][1]=0.125;hva.frames[1][0].transform[1][0]=-0.25;hva.frames[1][0].transform[2][3]=5;
+    ra2assets::Vpl vpl;vpl.section_count=32;vpl.tables.resize(32);
+    for(int l=0;l<32;++l)for(int c=0;c<256;++c)vpl.tables[l][c]=static_cast<uint8_t>((c+l*7)%256);
+    ra2assets::Palette pal{};
+    for(int c=0;c<256;++c)pal[c]={static_cast<uint8_t>(c),static_cast<uint8_t>(255-c),static_cast<uint8_t>((c*17)%256),255};
+    const std::uint64_t expected[]={10648953186822083836ull,1542018878348848889ull,11643546570104464420ull,
+        6498029822417324300ull,654116153814205069ull,6793730798480642762ull,5855072078042587445ull,
+        8198710730002339777ull,5450322192246802704ull,11708068853678602759ull,6106300286908376974ull,
+        8185425042783939714ull,17135073159603382555ull,15724758639675001596ull,2983200812574123843ull,
+        582620714650974465ull,16313397727477027545ull,18430286955755373869ull,2497314096417208839ull,
+        16565973376344325639ull};
+    int index=0;
+    for(int mode:{2,4})for(int frame:{0,1})for(int ramp:{0,1,5,13,1226}) {
+        model.sections[0].normals_mode=mode;
+        const auto image=ra2engine::rasterize_model(model,hva,ra2engine::index_to_yaw(3,32),vpl,pal,frame,0.12,ramp);
+        std::uint64_t hash=14695981039346656037ull;for(auto byte:image.rgba)hash=(hash^byte)*1099511628211ull;
+        INFO("normal mode="<<mode<<" frame="<<frame<<" ramp="<<ramp);CHECK(hash==expected[index++]);
+    }
+}
+
 TEST_CASE("voxel animation cache: frame-boundary eviction preserves live part references") {
     ra2engine::VoxelAnimationCache cache(700);
     cache.begin_frame(1,1);

@@ -1,6 +1,7 @@
 #include "voxel_raster.hpp"
 #include "terrain_tilt.hpp"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <cctype>
@@ -152,6 +153,11 @@ VoxelSprite rasterize_model(const ra2assets::VxlModel& m, const ra2assets::HvaMo
         const double stepx = (sec.max_bounds[0] - sec.min_bounds[0]) / sec.size_x;
         const double stepy = (sec.max_bounds[1] - sec.min_bounds[1]) / sec.size_y;
         const double stepz = (sec.max_bounds[2] - sec.min_bounds[2]) / sec.size_z;
+        // A normal's light level depends only on this call's orientation,
+        // VPL level count and section normal mode. Reuse the exact arithmetic
+        // result for repeated normals; no transforms or depth tests change.
+        std::array<int,256> light_by_normal;
+        light_by_normal.fill(-1);
         for (int z = 0; z < sec.size_z; ++z)
             for (int y = 0; y < sec.size_y; ++y)
                 for (int x = 0; x < sec.size_x; ++x) {
@@ -167,7 +173,8 @@ VoxelSprite rasterize_model(const ra2assets::VxlModel& m, const ra2assets::HvaMo
                             sx, sy, depth);
                     const int px = static_cast<int>(std::round(sx)) + out.anchor_x;
                     const int py = static_cast<int>(std::round(sy)) + out.anchor_y;
-                    const int lv = light_level(v.normal, sec.normals_mode, vpl.section_count, L, H);
+                    int& lv = light_by_normal[v.normal];
+                    if(lv<0)lv=light_level(v.normal,sec.normals_mode,vpl.section_count,L,H);
                     const ra2assets::Rgba col = pal[vpl.tables[lv][v.color]];
                     // 2x1 footprint (voxel-render.md §1).
                     for (int dx = 0; dx < 2; ++dx) {
