@@ -40,16 +40,25 @@ void depth_set_terrain(ra2engine::World& world, Assets& a) {
     // their water for ships [RE: world-depth.md B1 anchors].
     if (a.map.has_overlay()) {
         std::vector<std::uint8_t> hb(static_cast<std::size_t>(gw) * gh, 0);
+        std::vector<std::uint8_t> real_cell(hb.size(), 0);
+        for (const ra2assets::MapCell& c : a.map.cells())
+            if (c.x >= 0 && c.y >= 0 && c.x < gw && c.y < gh)
+                real_cell[static_cast<std::size_t>(c.y) * gw + c.x] = 1;
         bool any_high = false;
         for (const ra2assets::MapCell& c : a.map.cells()) {
             if (c.x < 0 || c.y < 0 || c.x >= gw || c.y >= gh) continue;
             const int id = a.map.overlay_at(c.x, c.y);
-            if (id != 0x18 && id != 0x19 && id != 0xED && id != 0xEE) continue;
-            const std::size_t i = static_cast<std::size_t>(c.y) * gw + c.x;
-            const ra2assets::LandType t = tile[i];
-            hb[i] = (t == ra2assets::LandType::Water || t == ra2assets::LandType::Rock ||
-                     t == ra2assets::LandType::Wall) ? 1 : 2;
-            any_high = true;
+            int xs[4], ys[4];
+            if (!ra2engine::high_bridge_section_cells(id, c.x, c.y, xs, ys)) continue;
+            for (int k = 0; k < 4; ++k) {
+                if (xs[k] < 0 || ys[k] < 0 || xs[k] >= gw || ys[k] >= gh) continue;
+                const std::size_t i = static_cast<std::size_t>(ys[k]) * gw + xs[k];
+                if (!real_cell[i]) continue;   // never open cells outside the map diamond
+                const ra2assets::LandType t = tile[i];
+                hb[i] = (t == ra2assets::LandType::Water || t == ra2assets::LandType::Rock ||
+                         t == ra2assets::LandType::Wall) ? 1 : 2;
+                any_high = true;
+            }
         }
         if (any_high) world.set_high_bridges(std::move(hb));
     }

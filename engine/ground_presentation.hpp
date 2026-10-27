@@ -1,7 +1,18 @@
 #pragma once
 #include <algorithm>
 #include <cmath>
+#include "unit_combat.hpp"   // MovementDomain
 namespace ra2engine {
+// The structural deck, not the sparse artwork anchors, owns unit elevation.
+template<class W,class U> bool unit_on_high_bridge(const W& w,const U& u) {
+    if (u.is_naval || (u.is_aircraft && u.altitude > 0.0) || u.cargo_of >= 0) return false;
+    if (!w.high_bridge_cell(u.cell_x,u.cell_y) || w.high_bridge_destroyed(u.cell_x,u.cell_y)) return false;
+    if (w.terrain_armed()) return u.on_deck != 0;
+    const auto& water=w.grid_for(MovementDomain::Water);
+    if (u.cell_x < 0 || u.cell_y < 0 || u.cell_x >= w.grid_w() || u.cell_y >= w.grid_h()) return false;
+    const auto i=static_cast<std::size_t>(u.cell_y)*w.grid_w()+u.cell_x;
+    return i < water.size() && water[i] != 0;
+}
 inline double deck_unit_depth(double fx,double fy,int cx,int cy,bool deck) {
     return deck ? std::max(fx+fy,double(cx+cy))+1.001 : fx+fy;
 }

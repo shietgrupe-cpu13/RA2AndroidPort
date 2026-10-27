@@ -50,6 +50,20 @@ bool is_low_bridge_overlay(int idx) {
     return c == BridgeClass::LowWood || c == BridgeClass::LowConcrete;
 }
 
+bool high_bridge_section_cells(int overlay, int x, int y, int out_x[4], int out_y[4]) {
+    if (bridge_class_of_overlay(overlay) != BridgeClass::HighHead) return false;
+    // OverlayClass::Mark (0x5FC5EE): BRIDGE1/BRIDGEB1 use direction 0
+    // (north); BRIDGE2/BRIDGEB2 direction 6 (west).
+    const bool north = overlay == 0x18 || overlay == 0xED;
+    const int dx = north ? 0 : -1, dy = north ? -1 : 0;
+    const int offsets[4] = {0, 1, 2, -1};
+    for (int i = 0; i < 4; ++i) {
+        out_x[i] = x + offsets[i] * dx;
+        out_y[i] = y + offsets[i] * dy;
+    }
+    return true;
+}
+
 bool low_bridge_destroyed(int idx) {
     return idx == 100 || idx == 101 || idx == 100 + kConcreteOffset || idx == 101 + kConcreteOffset;
 }

@@ -25,6 +25,13 @@ BridgeClass bridge_class_of_overlay(int idx);
 bool is_low_bridge_overlay(int idx);          // any low section incl. destroyed ones
 bool low_bridge_destroyed(int idx);           // 100/101 (wood) or 231/232 (concrete)
 
+// Structural cells written by the high-bridge anchor setter (gamemd 1.001
+// 0x47E040 / 0x47E470). The anchor is not the whole deck: forward one/two
+// and opposite one carry the same structural flag. Forward three and the
+// extra direction-6 cell carry side flags only and are deliberately excluded.
+// Returns false for other overlays; clipping to real map cells is the caller's job.
+bool high_bridge_section_cells(int overlay, int x, int y, int out_x[4], int out_y[4]);
+
 // The cross-section axis of a low bridge section: the set whose destroy walk
 // is FUN_0057B720 spans the 3 cells (x, y-1..y+1) ("ColumnY"); the other set
 // (FUN_0057BCE0) spans (x-1..x+1, y) ("RowX").

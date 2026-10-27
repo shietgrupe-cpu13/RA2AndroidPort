@@ -7,6 +7,25 @@
 
 using namespace ra2engine;
 
+TEST_CASE("high bridges: anchor owns four structural cells in the native direction") {
+    for (int overlay : {0x18, 0x19, 0xED, 0xEE}) {
+        CAPTURE(overlay);
+        int xs[4], ys[4];
+        REQUIRE(high_bridge_section_cells(overlay, 20, 30, xs, ys));
+        const bool north = overlay == 0x18 || overlay == 0xED;
+        CHECK(xs[0] == 20); CHECK(ys[0] == 30);
+        CHECK(xs[1] == (north ? 20 : 19)); CHECK(ys[1] == (north ? 29 : 30));
+        CHECK(xs[2] == (north ? 20 : 18)); CHECK(ys[2] == (north ? 28 : 30));
+        CHECK(xs[3] == (north ? 20 : 21)); CHECK(ys[3] == (north ? 31 : 30));
+        // Side flags on the third forward cell do not grant a structural deck.
+        for (int i = 0; i < 4; ++i)
+            CHECK_FALSE((xs[i] == (north ? 20 : 17) && ys[i] == (north ? 27 : 30)));
+    }
+    int xs[4] = {}, ys[4] = {};
+    for (int overlay : {-1, 0, 0x4A, 0x65, 0xCD, 255})
+        CHECK_FALSE(high_bridge_section_cells(overlay, 20, 30, xs, ys));
+}
+
 TEST_CASE("bridges: runtime overlay classes (FUN_00586BB0 dispatch)") {
     CHECK(bridge_class_of_overlay(0x4A) == BridgeClass::LowWood);       // LOBRDG01
     CHECK(bridge_class_of_overlay(0x65) == BridgeClass::LowWood);       // LOBRDG28 (destroyed)
