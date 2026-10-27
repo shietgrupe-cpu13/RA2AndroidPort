@@ -660,17 +660,17 @@ private:
                         fx_.spawn(a1, e.x, e.y, level_at(w, e.x, e.y), 0.0);
                         fx_.spawn(a2, e.x, e.y, level_at(w, e.x, e.y), 0.0);
                         snd_.eva("EVA_PsychicDominatorActivated");
-                        snd_.play_at("PsychicDominatorLaunched", e.x, e.y, "dominate");
+                        snd_.eva("YuriPsychicDominatorActivated");
+                        snd_.play_at("YuriDominatorActivated", e.x, e.y, "yuri_voice");
+                        snd_.play_at("YuriBeOneWithYuri", e.x, e.y, "yuri_voice");
                     } else if (t == T::GeneticConverter) {
                         std::string a = gen_s("GeneticConverterInvokeAnim"); if (a.empty()) a = "GENDEATH";
                         fx_.spawn(a, e.x, e.y, level_at(w, e.x, e.y), 0.0);
                         snd_.eva("EVA_GeneticConverterActivated");
-                        snd_.play_at("MutatorActivate", e.x, e.y, "mutator");
                     } else if (t == T::PsychicReveal) {
                         std::string a = gen_s("PsychicRevealInvokeAnim"); if (a.empty()) a = "PSYWAVE";
                         fx_.spawn(a, e.x, e.y, level_at(w, e.x, e.y), 0.0);
                         snd_.eva("EVA_PsychicRevealActivated");
-                        snd_.play_at("PsychicRevealActivate", e.x, e.y, "reveal");
                     }
                     pres_log(frame_, std::string("fx superweapon activated ") + ra2engine::superweapon_type_name(t));
                     break;
