@@ -660,6 +660,7 @@ private:
                         fx_.spawn(a1, e.x, e.y, level_at(w, e.x, e.y), 0.0);
                         fx_.spawn(a2, e.x, e.y, level_at(w, e.x, e.y), 0.0);
                         snd_.eva("EVA_PsychicDominatorActivated");
+                        snd_.eva("YuriPsychicDominatorActivated");
                     } else if (t == T::GeneticConverter) {
                         std::string a = gen_s("GeneticConverterInvokeAnim"); if (a.empty()) a = "GENDEATH";
                         fx_.spawn(a, e.x, e.y, level_at(w, e.x, e.y), 0.0);

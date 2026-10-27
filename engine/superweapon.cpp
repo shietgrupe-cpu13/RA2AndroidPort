@@ -13,11 +13,11 @@ const char* superweapon_type_name(SuperweaponType t) {
         case SuperweaponType::ChronoWarp:       return "ChronoWarp";
         case SuperweaponType::ParaDrop:         return "ParaDrop";
         case SuperweaponType::AmerParaDrop:     return "AmerParaDrop";
-        case SuperweaponType::PsychicDominator: return "PsychicDominator";
+        case SuperweaponType::PsychicDominator: return "Psychic Dominator";
         case SuperweaponType::SpyPlane:         return "SpyPlane";
-        case SuperweaponType::GeneticConverter: return "GeneticConverter";
+        case SuperweaponType::GeneticConverter: return "Genetic Mutator";
         case SuperweaponType::ForceShield:      return "ForceShield";
-        case SuperweaponType::PsychicReveal:    return "PsychicReveal";
+        case SuperweaponType::PsychicReveal:    return "Psychic Sensor";
     }
     return "None";
 }

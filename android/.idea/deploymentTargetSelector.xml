@@ -4,10 +4,10 @@
     <selectionStates>
       <SelectionState runConfigName="RA2 Phone">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-10-27T08:40:34.394414300Z">
+        <DropdownSelection timestamp="2026-10-27T08:49:05.906393Z">
           <Target type="DEFAULT_BOOT">
             <handle>
-              <DeviceId pluginId="LocalEmulator" identifier="path=C:\Users\justi\.android\avd\Pixel_8_Pro.avd" />
+              <DeviceId pluginId="PhysicalDevice" identifier="serial=PVIJX4R4TGN7AIRS" />
             </handle>
           </Target>
         </DropdownSelection>

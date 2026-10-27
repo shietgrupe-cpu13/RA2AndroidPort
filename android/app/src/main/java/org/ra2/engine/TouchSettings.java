@@ -31,7 +31,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** Clean touch control mapping with professional layout presets and fullscreen free-placement editor. */
+/** Clean touch control mapping with professional layout presets, left-side dock alignment, and fullscreen drag editor. */
 final class TouchSettings {
 
     static class ActionItem {
@@ -74,6 +74,7 @@ final class TouchSettings {
         int savedScale = p.getInt("touch_scale", 100);
         int savedOpacity = p.getInt("touch_opacity", 100);
         boolean savedCollapsed = p.getBoolean("touch_collapsed", true);
+        int savedDock = p.getInt("touch_dock", 0);
 
         List<ActionItem> currentLayout = parseLayout(savedMapping, savedPositions, mask);
 
@@ -87,7 +88,7 @@ final class TouchSettings {
         root.setPadding(dp16, dp16, dp16, dp16);
 
         TextView subtitle = new TextView(context);
-        subtitle.setText("Choose professional control layout presets or open the Fullscreen Touch Position Editor to drag buttons anywhere.");
+        subtitle.setText("Choose layout presets, left-side dock alignment, or open the Fullscreen Touch Position Editor.");
         subtitle.setTextSize(13);
         subtitle.setTextColor(Color.rgb(160, 182, 193));
         subtitle.setPadding(0, 0, 0, dp12);
@@ -102,10 +103,10 @@ final class TouchSettings {
 
         Spinner presetSpinner = new Spinner(context);
         String[] presets = {
-            "Classic Command Dock (Bottom-Left)",
-            "Thumb Comfort (Ergonomic Reach)",
-            "Tactical Commander (Extended)",
-            "Minimalist Combat Focus"
+            "Classic Command Dock",
+            "Left-Side Margin Optimized",
+            "Thumb Comfort (Ergonomic Arc)",
+            "Tactical Commander (Extended)"
         };
         ArrayAdapter<String> presetAdapter = new ArrayAdapter<>(context, android.R.layout.simple_spinner_dropdown_item, presets);
         presetSpinner.setAdapter(presetAdapter);
@@ -119,6 +120,20 @@ final class TouchSettings {
             @Override
             public void onNothingSelected(AdapterView<?> parent) { }
         });
+
+        // --- DOCK SIDE ALIGNMENT ---
+        TextView dockLabel = new TextView(context);
+        dockLabel.setText("DOCK ALIGNMENT (SIDE / MARGIN):");
+        dockLabel.setTextSize(12);
+        dockLabel.setTextColor(Color.rgb(135, 163, 181));
+        root.addView(dockLabel);
+
+        Spinner dockSpinner = new Spinner(context);
+        String[] dockOptions = {"Bottom-Left (Default)", "Left-Side Margin (Utilize Black Space)", "Bottom-Right"};
+        ArrayAdapter<String> dockAdapter = new ArrayAdapter<>(context, android.R.layout.simple_spinner_dropdown_item, dockOptions);
+        dockSpinner.setAdapter(dockAdapter);
+        dockSpinner.setSelection(savedDock);
+        root.addView(dockSpinner);
 
         // --- FULLSCREEN TOUCH POSITION EDITOR BUTTON ---
         Button fullscreenBtn = new Button(context);
@@ -199,7 +214,8 @@ final class TouchSettings {
                 .setView(scroll)
                 .setPositiveButton("Save", (dialog, which) -> {
                     savePreferences(p, currentLayout, scaleValues[scaleSpinner.getSelectedItemPosition()],
-                            opValues[opSpinner.getSelectedItemPosition()], collapsedCheck.isChecked());
+                            opValues[opSpinner.getSelectedItemPosition()], collapsedCheck.isChecked(),
+                            dockSpinner.getSelectedItemPosition());
                 })
                 .setNeutralButton("Hotkey Guide", (dialog, which) -> guide(context))
                 .setNegativeButton("Cancel", null)
@@ -213,7 +229,16 @@ final class TouchSettings {
         if (presetIndex == 0) { // Classic Command Dock
             activeIds = Arrays.asList("STOP", "GUARD", "DEPLOY", "SCATTER", "FIRE", "MOVE", "ADD");
             for (ActionItem a : layout) { a.xPct = -1f; a.yPct = -1f; }
-        } else if (presetIndex == 1) { // Thumb Comfort (Ergonomic arc)
+        } else if (presetIndex == 1) { // Left-Side Margin Optimized
+            activeIds = Arrays.asList("STOP", "GUARD", "DEPLOY", "SCATTER", "FIRE", "MOVE", "ADD");
+            customPos.put("STOP", new float[]{2f, 30f});
+            customPos.put("GUARD", new float[]{2f, 42f});
+            customPos.put("DEPLOY", new float[]{2f, 54f});
+            customPos.put("SCATTER", new float[]{2f, 66f});
+            customPos.put("FIRE", new float[]{2f, 78f});
+            customPos.put("MOVE", new float[]{2f, 90f});
+            customPos.put("ADD", new float[]{2f, 18f});
+        } else if (presetIndex == 2) { // Thumb Comfort
             activeIds = Arrays.asList("STOP", "GUARD", "DEPLOY", "SCATTER", "FIRE", "MOVE", "ADD");
             customPos.put("STOP", new float[]{5f, 75f});
             customPos.put("GUARD", new float[]{16f, 75f});
@@ -222,16 +247,9 @@ final class TouchSettings {
             customPos.put("FIRE", new float[]{78f, 88f});
             customPos.put("MOVE", new float[]{89f, 88f});
             customPos.put("ADD", new float[]{78f, 75f});
-        } else if (presetIndex == 2) { // Tactical Commander (Extended)
+        } else if (presetIndex == 3) { // Tactical Commander (Extended)
             activeIds = Arrays.asList("STOP", "GUARD", "DEPLOY", "SCATTER", "FIRE", "MOVE", "ADD", "BOX", "ROUTE", "HOME");
             for (ActionItem a : layout) { a.xPct = -1f; a.yPct = -1f; }
-        } else if (presetIndex == 3) { // Minimalist Combat Focus
-            activeIds = Arrays.asList("STOP", "GUARD", "MOVE", "FIRE", "SCATTER");
-            customPos.put("STOP", new float[]{5f, 82f});
-            customPos.put("GUARD", new float[]{16f, 82f});
-            customPos.put("MOVE", new float[]{78f, 82f});
-            customPos.put("FIRE", new float[]{89f, 82f});
-            customPos.put("SCATTER", new float[]{47f, 88f});
         }
 
         for (ActionItem item : layout) {
@@ -240,14 +258,14 @@ final class TouchSettings {
             if (coords != null) {
                 item.xPct = coords[0];
                 item.yPct = coords[1];
-            } else if (presetIndex != 1 && presetIndex != 3) {
+            } else if (presetIndex != 2) {
                 item.xPct = -1f;
                 item.yPct = -1f;
             }
         }
     }
 
-    private static void savePreferences(SharedPreferences p, List<ActionItem> layout, int scale, int opacity, boolean collapsed) {
+    private static void savePreferences(SharedPreferences p, List<ActionItem> layout, int scale, int opacity, boolean collapsed, int dockSide) {
         int maskVal = 0;
         StringBuilder mappingSb = new StringBuilder();
         StringBuilder posSb = new StringBuilder();
@@ -272,6 +290,7 @@ final class TouchSettings {
                 .putInt("touch_scale", scale)
                 .putInt("touch_opacity", opacity)
                 .putBoolean("touch_collapsed", collapsed)
+                .putInt("touch_dock", dockSide)
                 .apply();
     }
 
@@ -315,7 +334,7 @@ final class TouchSettings {
         closeBtn.setText("Save & Close");
         closeBtn.setOnClickListener(v -> {
             savePreferences(prefs, layout, prefs.getInt("touch_scale", 100), prefs.getInt("touch_opacity", 100),
-                    prefs.getBoolean("touch_collapsed", true));
+                    prefs.getBoolean("touch_collapsed", true), prefs.getInt("touch_dock", 0));
             dialog.dismiss();
         });
 
@@ -439,7 +458,7 @@ final class TouchSettings {
                     if (draggedIndex >= 0 && draggedIndex < activeBtns.size() && w > 0 && h > 0) {
                         ActionItem item = activeBtns.get(draggedIndex);
                         item.xPct = Math.max(0f, Math.min(100f, (x / (float) w) * 100f));
-                        item.yPct = Math.max(10f, Math.min(90f, (y / (float) h) * 100f));
+                        item.yPct = Math.max(5f, Math.min(95f, (y / (float) h) * 100f));
                         invalidate();
                     }
                     break;

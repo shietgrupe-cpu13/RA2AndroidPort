@@ -207,12 +207,13 @@ const std::vector<TouchBtn>& touch_buttons() const {
                 }
             }
         }
-        int mask=127;
-        if(const char* v=std::getenv("RA2_TOUCH_ACTIONS"))mask=std::clamp(std::atoi(v),0,127);
+        int mask=511;
+        if(const char* v=std::getenv("RA2_TOUCH_ACTIONS"))mask=std::clamp(std::atoi(v),0,1023);
         const TouchBtn actions[]={{"STOP",TB_STOP},{"GUARD",TB_GUARD},{"DEPLOY",TB_DEPLOY},
-            {"SCATTER",TB_SCATTER},{"FIRE",TB_FIRE},{"ATK MOVE",TB_MOVE},{"+SELECT",TB_ADD}};
+            {"SCATTER",TB_SCATTER},{"FIRE",TB_FIRE},{"ATK MOVE",TB_MOVE},{"+SELECT",TB_ADD},
+            {"TYPE",TB_TYPE},{"ROUTE Z",TB_ROUTE}};
         std::vector<TouchBtn> out;
-        for(int i=0;i<7;++i)if(mask&(1<<i))out.push_back(actions[i]);
+        for(int i=0;i<9;++i)if(mask&(1<<i))out.push_back(actions[i]);
         out.push_back({"MORE",TB_MORE});
         for(int i=0;i<5;++i)out.push_back({i==0?"1":i==1?"2":i==2?"3":i==3?"4":"5",TB_GROUP1+i});
         return out;

@@ -17,6 +17,8 @@ import android.system.Os;
 import android.util.Log;
 import android.view.View;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -70,12 +72,12 @@ public class RA2Activity extends SDLActivity implements AudioManager.OnAudioFocu
     protected void onCreate(Bundle savedInstanceState) {
         try {
             try {
-                java.io.File mod=ModManager.selectedFolder(this);
+                File mod=ModManager.selectedFolder(this);
                 Os.setenv("RA2_MOD_DIR",mod==null?"":mod.getCanonicalPath(),true);
-            } catch(java.io.IOException e) {
+            } catch(IOException e) {
                 // Never silently launch the base game when a selected profile disappeared.
                 Log.e(TAG,"Selected mod unavailable",e);
-                Os.setenv("RA2_MOD_DIR",new java.io.File(ModManager.root(this),".missing-selection").getAbsolutePath(),true);
+                Os.setenv("RA2_MOD_DIR",new File(ModManager.root(this),".missing-selection").getAbsolutePath(),true);
             }
             SharedPreferences controls=getSharedPreferences("interface",MODE_PRIVATE);
             Os.setenv("RA2_TOUCH_ACTIONS",Integer.toString(Math.max(0,Math.min(127,controls.getInt("touch_actions",127)))),true);
@@ -86,6 +88,8 @@ public class RA2Activity extends SDLActivity implements AudioManager.OnAudioFocu
             if(!positions.isEmpty()) Os.setenv("RA2_TOUCH_POSITIONS",positions,true);
             Os.setenv("RA2_TOUCH_SCALE",Integer.toString(controls.getInt("touch_scale",100)),true);
             Os.setenv("RA2_TOUCH_OPACITY",Integer.toString(controls.getInt("touch_opacity",100)),true);
+            int dock=controls.getInt("touch_dock",0);
+            Os.setenv("RA2_TOUCH_DOCK",dock==1?"left_side":(dock==2?"bottom_right":"bottom_left"),true);
             Os.setenv("RA2_WIDESCREEN",controls.getBoolean("widescreen_mode",true)?"1":"0",true);
             Os.setenv("RA2_FPS_LIMIT",Integer.toString(controls.getInt("fps_limit",60)),true);
             Os.setenv("RA2_COMMAND_MENU",
