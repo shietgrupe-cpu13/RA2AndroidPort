@@ -9,6 +9,23 @@ be reopened in the launcher. Confirmation is not proof of purchase or legal
 clearance. Diagnostics remain local until you choose Share game report.
 Current test builds use Google Drive delivery; do not redistribute retail assets.
 
+Current build 900050: see YURI-FIDELITY50.md for verified changes and limits.
+MORE > ROUTE Z starts a movement plan; tap destinations, then ROUTE Z again
+to commit. Z on a keyboard uses the same toggle. Cancel discards the plan;
+Stop cancels a committed route. Only movement is queued, up to 64 points.
+Launcher > Touch controls & hotkeys selects primary buttons and whether the
+panel starts collapsed. MORE and control groups remain available.
+Loose .map/.mpr/.yrm skirmish maps in the selected folder's Maps directory
+can be imported. Unsupported scripts, theaters and invalid maps are rejected;
+this does not certify an entire addon pack or Mental Omega compatibility.
+Save format 60 reads formats 55-59; keep backups. Older builds cannot read
+new route/launch metadata. All multiplayer peers must use the same build.
+Retest Boomer/Dreadnought missile tubes, Yuri radar colours and menu clicks.
+Nuke/Weather Storm foundation damage is corrected; bridge span rendering and
+four unsupported superweapon controllers remain open. No phone acceptance
+or performance improvement is claimed from automated tests alone.
+The older build notes below are retained as historical records.
+
 Build 900042: correct Yuri Citadel wall asset, black-edged enemy-colour dashed
 sensor intent lines, combat idle/secondary animation correction, Floating Disc
 rim laser/air-target height and nuclear ascent trail. Full Disc drain abilities

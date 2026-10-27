@@ -74,6 +74,15 @@ touch pan2 xy 400 300 400 300                             # two-finger tap = des
 wait 2
 assert selected == 0
 
+# --- Build900050: ROUTE Z has a production touch path and visible mode -----
+# Movement/save determinism is covered by native waypoint regressions.
+touch tap touch:MORE
+touch tap "touch:ROUTE Z"
+assert planning_mode == 1
+touch tap "touch:ROUTE Z"
+assert planning_mode == 0
+touch tap touch:BACK
+
 # --- W6-01-09: command column page 2: TYPE extends a selection to its type ---------
 touch tap unit 0:E1
 wait 20
