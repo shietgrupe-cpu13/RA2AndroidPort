@@ -255,7 +255,7 @@ int pres_bracket_delta(const ra2engine::Unit& u);
 void draw_bomb_icons(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2engine::World& world,
                      const std::vector<ra2engine::Unit>& us, const ra2engine::Camera& cam);
 inline const ra2assets::TheaterChain& art_chain() {
-    if (g_art_chain && !g_art_chain->yr_only) return *g_art_chain;
+    if (g_art_chain) return *g_art_chain;
     return *ra2assets::theater_chain("TEMPERATE");
 }
 #include "asset_search.inc"   // W3-FIX-A: one MIX search list per theater
