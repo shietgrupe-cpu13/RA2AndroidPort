@@ -6,13 +6,15 @@
     <string name="setup_ready">All required files are present.</string>
     <string name="setup_missing_required">Missing (required):</string>
     <string name="setup_missing_optional">Missing (optional, a feature is lost without them):</string>
-    <string name="setup_how">How to add them:\n 1. On your PC, put the files above from your Red Alert 2 install folder (the one holding ra2.mix) into a folder named RA2, and copy that folder into the phone\'s Download folder (USB file transfer, or: adb push into /sdcard/Download/RA2/).\n 2. Tap IMPORT GAME FILES. In the picker, OPEN the RA2 folder itself (Android does not allow picking Download, the storage root or a whole drive), then tap USE THIS FOLDER and ALLOW. Picking the folder that contains RA2 works too.\n 3. The files are copied into the app (about 750 MB, under a minute) and the game starts. Keep this screen open until the copy has finished.\n\nAlternatively copy them over USB (MTP) straight into the folder shown above.</string>
+    <string name="setup_how">How to add them:\n 1. On your PC, put the files above from your Red Alert 2 install folder (the one holding ra2.mix) into a folder named RA2, and copy that folder into the phone\'s Download folder (USB file transfer, or: adb push into /sdcard/Download/RA2/).\n 2. Tap IMPORT OR UPDATE GAME FILES. In the picker, OPEN the RA2 folder itself (Android does not allow picking Download, the storage root or a whole drive), then tap USE THIS FOLDER and ALLOW. Picking the folder that contains RA2 works too.\n 3. The files are copied into the app (about 750 MB, under a minute) and the game starts. Keep this screen open until the copy has finished.\n\nTo add a custom map pack, first copy its extracted map files to the phone (or connect the drive by USB), tap IMPORT CUSTOM MAPS, then select the folder containing the .yrm, .map, or .mpr files. Maps are copied into the app without replacing game assets. Only maps supported by the current game mode and theater will appear in Skirmish.\n\nAlternatively copy files over USB (MTP) straight into the folder shown above.</string>
     <string name="setup_no_files">no Red Alert 2 game files in the picked folder. Open the RA2 folder itself (the one holding ra2.mix) and tap USE THIS FOLDER.</string>
+    <string name="setup_no_maps">No .yrm, .map, or .mpr files found in the selected folder or its map subfolder.</string>
     <string name="setup_import">Import game files</string>
     <string name="setup_start">Start</string>
     <string name="setup_exit">Exit</string>
     <string name="setup_copying">Copying %1$s …</string>
     <string name="setup_imported">Imported %1$d file(s).</string>
+    <string name="setup_maps_imported">Imported %1$d map file(s). Compatible maps will appear in Skirmish after restarting the game.</string>
     <string name="setup_failed">Import failed: %1$s</string>
     <string name="setup_title_ready">Red Alert 2 game files</string>
     <string name="shortcut_import_short">Import game files</string>

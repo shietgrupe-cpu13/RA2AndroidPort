@@ -9,11 +9,21 @@ void touch_colour(SDL_Renderer* ren, ra2assets::Rgba c) const {
     SDL_SetRenderDrawColor(ren,c.r,c.g,c.b,c.a);
 }
 void touch_metal(SDL_Renderer* ren,const SDL_Rect& r,ra2assets::Rgba c) const {
+    static const float opacity_mult = [] {
+        if (const char* v = std::getenv("RA2_TOUCH_OPACITY")) {
+            int op = std::atoi(v);
+            if (op >= 20 && op <= 100) return op / 100.0f;
+        }
+        return 1.0f;
+    }();
+    if (opacity_mult < 0.99f) {
+        c.a = static_cast<uint8_t>(std::clamp(static_cast<int>(c.a * opacity_mult), 20, 255));
+    }
     touch_colour(ren,c);SDL_RenderFillRect(ren,&r);
-    SDL_SetRenderDrawColor(ren,std::min(255,c.r+28),std::min(255,c.g+28),std::min(255,c.b+28),255);
+    SDL_SetRenderDrawColor(ren,std::min(255,c.r+28),std::min(255,c.g+28),std::min(255,c.b+28),c.a);
     SDL_RenderDrawLine(ren,r.x+1,r.y+1,r.x+r.w-2,r.y+1);
     SDL_RenderDrawLine(ren,r.x+1,r.y+1,r.x+1,r.y+r.h-2);
-    SDL_SetRenderDrawColor(ren,7,8,11,220);
+    SDL_SetRenderDrawColor(ren,7,8,11,static_cast<uint8_t>(std::clamp(static_cast<int>(220 * opacity_mult), 20, 255)));
     SDL_RenderDrawLine(ren,r.x+1,r.y+r.h-2,r.x+r.w-2,r.y+r.h-2);
 }
 enum : int { TB_TOGGLE = 1, TB_ADD, TB_FIRE, TB_MOVE, TB_STOP, TB_GUARD, TB_SCATTER, TB_DEPLOY, TB_BRIEF,
@@ -167,6 +177,36 @@ int touch_bar_top() const {
 }
 const std::vector<TouchBtn>& touch_buttons() const {
     static const std::vector<TouchBtn> all = [] {
+        if (const char* m = std::getenv("RA2_TOUCH_MAPPING")) {
+            if (m[0] != '\0') {
+                std::vector<TouchBtn> custom;
+                std::string s(m);
+                std::size_t start = 0;
+                while (start < s.size()) {
+                    std::size_t end = s.find(',', start);
+                    if (end == std::string::npos) end = s.size();
+                    std::string token = s.substr(start, end - start);
+                    start = end + 1;
+                    if (token == "STOP") custom.push_back({"STOP", TB_STOP});
+                    else if (token == "GUARD") custom.push_back({"GUARD", TB_GUARD});
+                    else if (token == "DEPLOY") custom.push_back({"DEPLOY", TB_DEPLOY});
+                    else if (token == "SCATTER") custom.push_back({"SCATTER", TB_SCATTER});
+                    else if (token == "FIRE") custom.push_back({"FIRE", TB_FIRE});
+                    else if (token == "MOVE") custom.push_back({"ATK MOVE", TB_MOVE});
+                    else if (token == "ADD") custom.push_back({"+SELECT", TB_ADD});
+                    else if (token == "BOX") custom.push_back({"BOX", TB_BOX});
+                    else if (token == "ROUTE") custom.push_back({"ROUTE Z", TB_ROUTE});
+                    else if (token == "HOME") custom.push_back({"HOME", TB_HOME});
+                    else if (token == "NEXT") custom.push_back({"NEXT", TB_NEXT});
+                    else if (token == "PREV") custom.push_back({"PREV", TB_PREV});
+                }
+                if (!custom.empty()) {
+                    custom.push_back({"MORE", TB_MORE});
+                    for (int i = 0; i < 5; ++i) custom.push_back({i==0?"1":i==1?"2":i==2?"3":i==3?"4":"5", TB_GROUP1 + i});
+                    return custom;
+                }
+            }
+        }
         int mask=127;
         if(const char* v=std::getenv("RA2_TOUCH_ACTIONS"))mask=std::clamp(std::atoi(v),0,127);
         const TouchBtn actions[]={{"STOP",TB_STOP},{"GUARD",TB_GUARD},{"DEPLOY",TB_DEPLOY},
@@ -186,11 +226,61 @@ const std::vector<TouchBtn>& touch_buttons() const {
     if (touch_page2_) return more;
     return all;
 }
+struct CustomTouchPos { int id; float x_pct; float y_pct; };
+static const std::vector<CustomTouchPos>& touch_custom_positions() {
+    static const std::vector<CustomTouchPos> pos = [] {
+        std::vector<CustomTouchPos> out;
+        if (const char* env = std::getenv("RA2_TOUCH_POSITIONS")) {
+            std::string s(env);
+            std::size_t start = 0;
+            while (start < s.size()) {
+                std::size_t end = s.find(';', start);
+                if (end == std::string::npos) end = s.size();
+                std::string token = s.substr(start, end - start);
+                start = end + 1;
+                std::size_t colon = token.find(':');
+                std::size_t comma = token.find(',');
+                if (colon != std::string::npos && comma != std::string::npos && comma > colon) {
+                    std::string key = token.substr(0, colon);
+                    float x = static_cast<float>(std::atof(token.substr(colon + 1, comma - colon - 1).c_str()));
+                    float y = static_cast<float>(std::atof(token.substr(comma + 1).c_str()));
+                    int id = -1;
+                    if (key == "STOP") id = TB_STOP;
+                    else if (key == "GUARD") id = TB_GUARD;
+                    else if (key == "DEPLOY") id = TB_DEPLOY;
+                    else if (key == "SCATTER") id = TB_SCATTER;
+                    else if (key == "FIRE") id = TB_FIRE;
+                    else if (key == "MOVE") id = TB_MOVE;
+                    else if (key == "ADD") id = TB_ADD;
+                    else if (key == "BOX") id = TB_BOX;
+                    else if (key == "ROUTE") id = TB_ROUTE;
+                    else if (key == "HOME") id = TB_HOME;
+                    if (id >= 0) out.push_back({id, x, y});
+                }
+            }
+        }
+        return out;
+    }();
+    return pos;
+}
+
 bool touch_bar_visible() const {
     return touch_ui_ && !menu_.open_ && !sld_.is_open() && !gf_abort_.open() && !input_locked_ && !net_chat_open_;
 }
-// Primary row sits at the bottom; extra shortcuts expand upwards.
+// Primary row sits at the bottom; extra shortcuts expand upwards or at custom free positions.
 SDL_Rect touch_btn_rect(int i) const {
+    const auto& btns = touch_buttons();
+    if (i >= 0 && i < static_cast<int>(btns.size())) {
+        int id = btns[i].id;
+        for (const auto& cp : touch_custom_positions()) {
+            if (cp.id == id) {
+                const auto base = ra2engine::TouchBarLayout::button(playfield_w_, kWinH, touch_btn_count(), i);
+                int x = std::clamp(static_cast<int>(cp.x_pct * static_cast<float>(playfield_w_ - base.w) / 100.0f), 0, std::max(0, playfield_w_ - base.w));
+                int y = std::clamp(static_cast<int>(cp.y_pct * static_cast<float>(kWinH - base.h) / 100.0f), 0, std::max(0, kWinH - base.h));
+                return SDL_Rect{x, y, base.w, base.h};
+            }
+        }
+    }
     const auto r = ra2engine::TouchBarLayout::button(playfield_w_, kWinH, touch_btn_count(), i);
     return SDL_Rect{r.x, r.y, r.w, r.h};
 }

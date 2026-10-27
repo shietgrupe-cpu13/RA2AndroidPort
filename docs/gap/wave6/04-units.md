@@ -265,10 +265,10 @@ The columns used per entry are: what the player experiences, evidence, original 
 | Field | Details |
 |---|---|
 | **Player** | A Soviet player with a Radar Tower has no Spy Plane button: `D-superweapons.play` L54 `sw_count(0)=0`. |
-| **Evidence** | <ul><li>`realplay_economy.inc:75-87` `rp_classic_sw_type` admits only the 7 classic RA2 types (a deliberate W2-AN-19 choice).</li><li>`main.cpp:2742` drops NARADR from the AI SW list.</li></ul> |
+| **Evidence** | <ul><li>`rp_supported_sw_type` admits the seven classic types and implemented Yuri powers, but not SpyPlane.</li><li>`main.cpp` does not register NARADR for the AI SW list.</li></ul> |
 | **Original** | YR `[NARADR] SuperWeapon=SpyPlaneSpecial` (RechargeTime 4), Type index 8 (superweapon.md §4). |
 | **Severity / effort** | MAJOR under U-1 (the engine plays YR rules) / M |
-| **Fix** | First decide: W2-AN-19 "classic RA2 SWs" conflicts with U-1. If YR: admit `SpyPlane` and add a `fire_superweapon_at` branch (an SPYP fly-over that reveals along its path; RE the reveal radius). |
+| **Fix** | If YR Spy Plane support is in scope: add `SpyPlane` and a `fire_superweapon_at` branch (an SPYP fly-over that reveals along its path; RE the reveal radius). |
 
 #### W6-04-20: The YR Force Shield (both Battle Labs) is missing (NEW; part D; **scope decision**)
 
@@ -668,4 +668,3 @@ The Part column gives the appendix with the details: A = Allied ground, B = Sovi
 | W6-04-29 / 30 | FIXED | `7348982` | rules keys |
 | W6-04-35 | FIXED | `b885a04` | harness |
 | W6-04-23, 31..34, 36..38 | OPEN | – | not in this fix list |
-

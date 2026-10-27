@@ -2,6 +2,7 @@ package org.ra2.engine;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Rect;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
@@ -12,6 +13,7 @@ import android.net.NetworkCapabilities;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.system.Os;
 import android.util.Log;
 import android.view.View;
 
@@ -67,10 +69,18 @@ public class RA2Activity extends SDLActivity implements AudioManager.OnAudioFocu
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         try {
-            android.content.SharedPreferences controls=getSharedPreferences("interface",MODE_PRIVATE);
-            android.system.Os.setenv("RA2_TOUCH_ACTIONS",Integer.toString(Math.max(0,Math.min(127,controls.getInt("touch_actions",127)))),true);
-            android.system.Os.setenv("RA2_TOUCH_COLLAPSED",controls.getBoolean("touch_collapsed",true)?"1":"0",true);
-            android.system.Os.setenv("RA2_COMMAND_MENU",
+            SharedPreferences controls=getSharedPreferences("interface",MODE_PRIVATE);
+            Os.setenv("RA2_TOUCH_ACTIONS",Integer.toString(Math.max(0,Math.min(127,controls.getInt("touch_actions",127)))),true);
+            Os.setenv("RA2_TOUCH_COLLAPSED",controls.getBoolean("touch_collapsed",true)?"1":"0",true);
+            String mapping=controls.getString("touch_mapping","");
+            if(!mapping.isEmpty()) Os.setenv("RA2_TOUCH_MAPPING",mapping,true);
+            String positions=controls.getString("touch_positions","");
+            if(!positions.isEmpty()) Os.setenv("RA2_TOUCH_POSITIONS",positions,true);
+            Os.setenv("RA2_TOUCH_SCALE",Integer.toString(controls.getInt("touch_scale",100)),true);
+            Os.setenv("RA2_TOUCH_OPACITY",Integer.toString(controls.getInt("touch_opacity",100)),true);
+            Os.setenv("RA2_WIDESCREEN",controls.getBoolean("widescreen_mode",true)?"1":"0",true);
+            Os.setenv("RA2_FPS_LIMIT",Integer.toString(controls.getInt("fps_limit",60)),true);
+            Os.setenv("RA2_COMMAND_MENU",
                 getSharedPreferences("interface",MODE_PRIVATE).getBoolean("command_menu",false)?"1":"0",true);
         } catch(android.system.ErrnoException e) { Log.w(TAG,"Menu preference unavailable",e); }
         Diagnostics.begin(this);

@@ -139,6 +139,24 @@ TEST_CASE("Gattling: ground force-fire spins up through every stage and stops on
     CHECK(w.units()[0].gattling.charge==0);
 }
 
+TEST_CASE("force-fire infantry face the selected ground cell, including targets behind them") {
+    ra2assets::MapFile map;
+    auto& cells=const_cast<std::vector<ra2assets::MapCell>&>(map.cells());
+    for(int y=0;y<12;++y)for(int x=0;x<12;++x)cells.push_back({x,y,0,0,0});
+    World w(map);
+    UnitCombat infantry;infantry.strength=400;infantry.damage=10;infantry.range=8;infantry.rof=20;
+    infantry.is_infantry=true;
+    Unit& unit=w.add_combat_unit(6,6,0,infantry);
+    unit.facing=4;
+
+    w.order_attack_cell(0,4,6);
+    w.step(1.0/15.0);
+    CHECK(unit.facing==1);
+    CHECK(unit.fire_flash>0.0);
+    CHECK(unit.attack_cell_x==4);
+    CHECK(unit.attack_cell_y==6);
+}
+
 TEST_CASE("Gattling: defensive turret reaches later stages through long reload intervals") {
     ra2assets::MapFile map; World w(map);
     BuildingTypeDef d; d.id="TESTGAT"; d.strength=100; d.armed=true;

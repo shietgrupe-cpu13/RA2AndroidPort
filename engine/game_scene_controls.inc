@@ -472,7 +472,7 @@
     void cameo_click(int type, bool right, bool shift) {
         const auto power=ra2engine::power_cameo_type(type);
         if(power!=ra2engine::SuperweaponType::None) {
-            if(!right && active_tab_==1 && world_.sw_ready(local_house_,power)) w2_arm_sw(power);
+            if(!right && world_.sw_ready(local_house_,power)) w2_arm_sw(power);
             return;
         }
         using ET = ra2engine::EventType;

@@ -102,11 +102,11 @@ remain covered by the existing regression suite.
   in-game reference replay established the full cause. Do not widen every road,
   disable occupancy, or change only a drawing offset. Engineer role handling itself
   already accepts every faction and passed a new end-to-end command regression.
-* SpyPlaneSpecial, ForceShieldSpecial, GeneticConverterSpecial and
-  PsychicDominatorSpecial remain explicitly unsupported by `rp_sw_type_of` and
-  the effect dispatcher. Adding their enums/buttons alone would not implement
-  aircraft passes, building-only shields/blackout, mutation receiver/anim spawn,
-  or staged permanent capture/lighting. They still need saved controllers and tests.
+* PsychicDominatorSpecial and GeneticConverterSpecial are now registered and
+  have skirmish effects (psionic-valid enemy units are captured; enemy infantry
+  are replaced with Brutes). Their exact vanilla presentation, animations, and
+  any additional campaign-specific behavior remain unverified. SpyPlaneSpecial
+  and ForceShieldSpecial are still unsupported.
 * Rocket payload building damage still uses the older `an_area_damage` owner;
   its unification is separate from the now-correct nuke/storm path. Exact missile
   hull presentation, all rotations, interception and impacts need phone acceptance.

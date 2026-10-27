@@ -100,7 +100,7 @@ bool touch_confirm_tap(ra2engine::InputEvent& ev) {
     if (input_.sw_targeting()) {
         int cx = 0, cy = 0;
         input_.resolve_ground_cell(int(ev.x/world_zoom_),int(ev.y/world_zoom_),cx,cy);
-        if (cx == touch_aim_cx_ && cy == touch_aim_cy_) {   // confirm: Input fires
+        if (touch_aim_cx_ != INT_MIN && std::abs(cx - touch_aim_cx_) <= 2 && std::abs(cy - touch_aim_cy_) <= 2) {   // confirm: Input fires
             touch_aim_cx_ = touch_aim_cy_ = INT_MIN;
             return false;
         }
@@ -154,6 +154,8 @@ void draw_touch_aim(SDL_Renderer* ren) {
         double rad = 0.0;
         if (t == T::Nuke) rad = world_.sw_cell_spread(0, t);
         else if (t == T::LightningStorm) rad = world_.sw_params().storm_cell_spread;
+        else if (t == T::PsychicDominator || t == T::GeneticConverter || t == T::PsychicReveal)
+            rad = world_.sw_cell_spread(0, t);
         const int sq = (t == T::IronCurtain || t == T::ChronoSphere || t == T::ChronoWarp) ? 1 : 0;
         for (int j = -sq; j <= sq; ++j)
             for (int i = -sq; i <= sq; ++i) diamond(touch_aim_cx_ + i, touch_aim_cy_ + j, 255, 220, 60);

@@ -323,6 +323,10 @@
                                         rules_.section_string("General", "V3RocketType", "V3ROCKET"),
                                         "HORNET", "ASW",   // any side's spawns (captured / cheat units)
                                         "BPLN"};           // wave-5 R-046: the AirstrikeTeamType
+        if (std::any_of(rp_sw_table_.begin(), rp_sw_table_.end(), [](const RpSwGrant& grant) {
+                return grant.type == ra2engine::SuperweaponType::GeneticConverter;
+            }))
+            ids.push_back("BRUTE");
         for (const UnitRoster* r : {&ur_, &ur_ai_})
             for (const ra2engine::UnitTypeDef& d : r->defs)
                 if (!d.combat.an.spawns.empty()) ids.push_back(d.combat.an.spawns);

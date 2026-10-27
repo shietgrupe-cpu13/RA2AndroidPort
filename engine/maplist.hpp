@@ -16,7 +16,13 @@ struct MapEntry {
     int min_players = 0;
     int max_players = 0;
     std::string theater;       // W5-PRES R-105: [Map] Theater= (upper case), filled by filter_lobby_theaters
+    bool addon = false;        // loose map imported into the install's maps/ directory
 };
+
+enum class MapCatalogFilter { All, Standard, Addon };
+std::vector<int> map_catalog_indices(const std::vector<MapEntry>& entries, MapCatalogFilter filter);
+std::vector<int> map_catalog_search_indices(const std::vector<MapEntry>& entries,
+                                           MapCatalogFilter filter, const std::string& query);
 
 // Build the skirmish map list. Steps, in EXACTLY this order [RE: maps.md §2]:
 //   1. PktFile::parse(pkt_text)                              -- the manifest

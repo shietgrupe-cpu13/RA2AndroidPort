@@ -1926,6 +1926,7 @@ public:
     // building is Dead, or new_house == the current owner. `startup` is the
     // captured building type's ProduceCashStartup (0 for a normal building).
     bool capture_building(int b_idx, int new_house, int startup);
+    bool capture_building_with_unit(int unit_idx, int b_idx, int weapon_slot);
 
     // Spy infiltration [RE: capture.md §B CONFIRMED]. Per building purpose, keyed
     // off `purpose` (resolved by the caller from the building type -- see

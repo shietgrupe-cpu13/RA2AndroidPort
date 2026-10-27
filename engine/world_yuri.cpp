@@ -135,6 +135,22 @@ bool World::try_building_mind_control(int bi,int vi,int slot) {
     return true;
 }
 
+bool World::capture_building_with_unit(int unit_idx, int b_idx, int weapon_slot) {
+    if (unit_idx < 0 || unit_idx >= static_cast<int>(units_.size()) ||
+        b_idx < 0 || b_idx >= static_cast<int>(buildings_.size()) || weapon_slot != 0)
+        return false;
+    const Unit& controller = units_[static_cast<std::size_t>(unit_idx)];
+    const Building& target = buildings_[static_cast<std::size_t>(b_idx)];
+    if (!active(controller) || controller.tg.t.rules_id != "YURIPR" ||
+        !target.alive || target.state == Building::State::Dead ||
+        !is_enemy(controller.house, target.house))
+        return false;
+    const int startup = target.type >= 0 && target.type < static_cast<int>(types_.size())
+                            ? types_[static_cast<std::size_t>(target.type)].produce_cash_startup
+                            : 0;
+    return capture_building(b_idx, controller.house, startup);
+}
+
 void World::step_yuri_workers(bool relocate) {
     // An undeployed/destroyed/captured manager releases its workers. A known
     // killer receives freed slaves; absent a killer they retain their house.

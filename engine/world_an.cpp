@@ -62,6 +62,7 @@ int an_naval_slot(const AnType& a, int want, bool has_secondary, bool victim_in_
         case kNavOrganicSecondary: slot = victim_organic ? 1 : 0; break;
         case kNavSealSpecial: slot = (!victim_hover && !victim_organic) ? 1 : 0; break;
         case kNavNavalNone: slot = -1; break;
+        case kNavBoomer: slot = 0; break;
         case kNavNavalAll:
         default: slot = 0; break;
     }

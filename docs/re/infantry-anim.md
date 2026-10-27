@@ -93,6 +93,10 @@ k = round( ((−90° − screen_angle) mod 360°) / 45° ) mod 8
 
 Worked 8-way table (cell dir → k): (0,−1)→7 NE, (1,−1)→6 E, (1,0)→5 SE,
 (1,1)→4 S, (0,1)→3 SW, (−1,1)→2 W, (−1,0)→1 NW, (−1,−1)→0 N.
+Explicit ground force-fire uses this same cell-space direction for infantry aim
+facing, including when the selected cell is behind the unit. Combat also commits
+that facing before emitting the shot, so the fire pose and its effects use the
+aim direction on the firing tick.
 
 ## 6. Divergences / not modelled (documented, deliberate)
 

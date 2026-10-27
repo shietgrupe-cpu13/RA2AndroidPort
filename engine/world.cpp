@@ -1721,6 +1721,12 @@ void World::group_move(int issuer, const std::vector<int>& ids, int goal_x, int 
         u.target = -1;
         u.target_building = -1;
         u.attack_order = false;
+        // A launched missile keeps flying, but a manual move cancels the
+        // launcher's queued missile salvo so it cannot launch more while moving.
+        const auto spawn_type = an_.types.find(u.an.t.spawns);
+        if (u.an.t.spawner_slot >= 0 && spawn_type != an_.types.end() &&
+            spawn_type->second.an.missile)
+            an_spawn_reset_target(sel[k]);
         // CB-1: a new move order supersedes a pending enter/unload
         // [RE-GATE APPLIED: transport-cargo.md §3/§4 -- kept: our
         // order-model convention; the hunt pinned no contrary rule].
@@ -2644,6 +2650,10 @@ bool World::capture_building(int b_idx, int new_house, int startup) {
         if (ai_enabled(new_house)) econ_[(std::size_t)new_house].credits += (double)startup;
         else house_credits_[new_house] += (double)startup;
     }
+    // On the original PC AI, an engineer's successful capture is immediately
+    // followed by a sell order. Unsellable buildings (for example oil
+    // derricks) keep their normal ownership because begin_sell refuses them.
+    if (ai_enabled(new_house)) (void)begin_sell(b_idx, new_house);
     return true;
 }
 
@@ -3365,7 +3375,9 @@ void World::step_capture(double dt) {
                     consumed = repair_building(bi, eng_house);                   // own damaged
                     if (consumed) note_entered(EnteredEvent::Repair, (int)i, bi, eng_house, true);
                 }
-                u.capture_target = -1;             // intent resolved on arrival regardless
+                // Capturing for an AI can immediately sell a no-buildup-art
+                // building and append survivor units, reallocating units_.
+                units_[i].capture_target = -1;     // intent resolved on arrival regardless
                 if (consumed) consume_unit(static_cast<int>(i));  // engineer always consumed
                 // own-undamaged building -> repair_building returned false: the
                 // engineer arrived, did nothing, NOT consumed (graceful fall-through).
@@ -4816,6 +4828,7 @@ void World::ai_order_attack_building(int unit_idx, int b_idx) {
 bool World::unit_can_damage_building(const Unit& u, int b_idx) const {
     // Mirrors combat.cpp's attack-building drop test exactly (W9-02-03).
     if (b_idx < 0 || b_idx >= static_cast<int>(buildings_.size())) return false;
+    if (u.tg.t.rules_id == "YURIPR") return true;
     const Building& b = buildings_[static_cast<std::size_t>(b_idx)];
     const int ws = unit_weapon_for_building(u, b.armor_ix, b.bomb_frame >= 0,
                                             an_victim_naval_cell(b.cx + b.fw / 2, b.cy + b.fh / 2));
@@ -5052,7 +5065,11 @@ void World::ai_execute_team_command(int house, HouseAiRec& rec, TeamInstance& te
                 // W2-SK-09: an engineer captures / a spy infiltrates the team's
                 // building target instead of "attacking" it (stock scripts
                 // 'Tech Oil Capture', 'Spy vs Power', 'Engineer vs Ally').
-                if (unit_is_engineer(u) || unit_is_spy(u)) {   // W7-01-33
+                // Yuri Prime's ControllerBuilding weapon must be used against
+                // hostile structures; treating him as a regular engineer can
+                // divert the AI into the own-building repair path instead.
+                const bool yuri_prime = u.tg.t.rules_id == "YURIPR";
+                if ((unit_is_engineer(u) && !yuri_prime) || unit_is_spy(u)) {   // W7-01-33
                     if (u.capture_target >= 0 || u.infiltrate_target >= 0) continue;
                     int tb = team_tb;
                     if (tb < 0)
@@ -6045,6 +6062,21 @@ void World::step(double dt) {
                                                       &combat_rng_);   // G-50 ROF jitter
     for (const ProjectileLaunch& l : launches)
         launch_projectile(l.attacker, l.target_unit, l.target_building);
+    if (!projectiles_enabled_) {
+        for (int i = 0; i < static_cast<int>(units_.size()); ++i) {
+            const Unit& u = units_[static_cast<std::size_t>(i)];
+            if (u.fire_flash == 0.4 && u.target_building >= 0 && u.w_active == 0 &&
+                u.tg.t.rules_id == "YURIPR")
+                (void)capture_building_with_unit(i, u.target_building, 0);
+        }
+    } else {
+        for (int i = 0; i < static_cast<int>(units_.size()); ++i) {
+            const Unit& u = units_[static_cast<std::size_t>(i)];
+            if (u.fire_flash == 0.4 && u.target_building >= 0 && u.w_active == 0 &&
+                u.tg.t.rules_id == "YURIPR" && !u.w_proj.flies())
+                (void)capture_building_with_unit(i, u.target_building, 0);
+        }
+    }
     // Gap fix C: a FireEvent for every unit that fired this step (try_fire /
     // the building branch stamp fire_flash = 0.4 exactly at the shot).
     for (int i = 0; i < static_cast<int>(units_.size()); ++i) {
@@ -6341,6 +6373,10 @@ void World::step(double dt) {
                 const int f = facing_from_delta(t.fx - u.fx, t.fy - u.fy);
                 if (f >= 0) u.facing = f;
             }
+        } else if (u.attack_cell_x >= 0) {
+            const int f = facing_from_delta(static_cast<double>(u.attack_cell_x) - u.fx,
+                                            static_cast<double>(u.attack_cell_y) - u.fy);
+            if (f >= 0) u.facing = f;
         }
 
         // W3-B: the live game's infantry sequence machine (inf_anim.cpp),
@@ -6938,7 +6974,15 @@ void World::detonate_projectile(Projectile& p, int victim) {
                        ? p.target_building : -1;
     const int tb_before = tb >= 0 ? buildings_[tb].hp : 0;
     AreaResult ar;
-    if (p.attacker >= 0 && p.attacker < static_cast<int>(units_.size())) {
+    const bool yuri_prime_building_shot = p.attacker >= 0 &&
+        p.attacker < static_cast<int>(units_.size()) && p.weapon_slot == 0 &&
+        units_[static_cast<std::size_t>(p.attacker)].tg.t.rules_id == "YURIPR" && tb >= 0;
+    if (yuri_prime_building_shot) {
+        const Building& target = buildings_[static_cast<std::size_t>(tb)];
+        if (icx >= target.cx && icx < target.cx + target.fw &&
+            icy >= target.cy && icy < target.cy + target.fh)
+            (void)capture_building_with_unit(p.attacker, tb, p.weapon_slot);
+    } else if (p.attacker >= 0 && p.attacker < static_cast<int>(units_.size())) {
         ar = damage_area(*this, units_, buildings_, occ_, units_[p.attacker], p.attacker, -1, ix, iy,
                          impact_z);
     } else if (p.attacker < 0 && p.attacker_building >= 0 &&

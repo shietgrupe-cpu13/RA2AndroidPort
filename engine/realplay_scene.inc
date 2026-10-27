@@ -210,7 +210,7 @@ private:
         input_.set_unit_factory_types(unit_ft);
         input_.set_infantry_factory_types(inf_ft_);
         input_.set_vehicle_factory_types(any_veh);
-        // W2-AN-04/18: every classic SW building grants its SW; the lobby
+        // W2-AN-04/18: every supported SW building grants its SW; the lobby
         // checkbox removes only the DisableableFromShell=yes ones (AmerParaDrop
         // stays with superweapons off). W2-CA-03: a campaign keeps them all.
         rp_sw_table_ = rp_superweapon_table(ba_, rules_);

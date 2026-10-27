@@ -69,32 +69,32 @@ bool rp_country_allows(const Rules& rules, const std::string& id, const std::str
     return !rp_has(rp_list(rules, id, "ForbiddenHouses"), country);
 }
 
-// W2-AN-19: the classic RA2 [SuperWeaponTypes] (rules.ini from ra2.mix/local.mix):
+// Supported RA2/YR [SuperWeaponTypes] (rules.ini/rulesmd.ini):
 // MultiSpecial, IronCurtainSpecial, LightningStormSpecial, ChronoSphereSpecial,
-// ChronoWarpSpecial, ParaDropSpecial, AmericanParaDropSpecial. The engine reads
-// YR rulesmd.ini, whose YR-only SW keys (NARADR SpyPlaneSpecial, GATECH/NATECH
-// ForceShieldSpecial, Yuri's specials) must not leak into a classic game.
-bool rp_classic_sw_type(const std::string& type_upper) {
+// ChronoWarpSpecial, ParaDropSpecial, AmericanParaDropSpecial, and the three
+// implemented Yuri specials. SpyPlane and ForceShield remain unsupported.
+bool rp_supported_sw_type(const std::string& type_upper) {
     return type_upper == "MULTIMISSILE" || type_upper == "IRONCURTAIN" ||
            type_upper == "LIGHTNINGSTORM" || type_upper == "CHRONOSPHERE" ||
-           type_upper == "CHRONOWARP" || type_upper == "PARADROP" || type_upper == "AMERPARADROP";
+           type_upper == "CHRONOWARP" || type_upper == "PARADROP" || type_upper == "AMERPARADROP" ||
+           type_upper == "PSYCHICDOMINATOR" || type_upper == "GENETICCONVERTER" ||
+           type_upper == "PSYCHICREVEAL";
 }
 
-// The classic SW section a building grants ("" when its SuperWeapon= is
-// absent or YR-only).
-std::string rp_building_classic_sw(const Rules& rules, const std::string& id) {
+// The supported SW section a building grants ("" when unsupported).
+std::string rp_building_supported_sw(const Rules& rules, const std::string& id) {
     const std::string sw = rules.section_string(id, "SuperWeapon", "");
     if (sw.empty()) return "";
-    return rp_classic_sw_type(rp_upper(rules.section_string(sw, "Type", ""))) ? sw : "";
+    return rp_supported_sw_type(rp_upper(rules.section_string(sw, "Type", ""))) ? sw : "";
 }
 
 // [SK-27] W2-AN-18: a structure the lobby's Superweapons checkbox removes:
-// it grants a classic superweapon whose [<Special>] DisableableFromShell=yes
+// it grants a supported superweapon whose [<Special>] DisableableFromShell=yes
 // (Nuke, Iron Curtain, Lightning Storm, Chronosphere). AmerParaDrop
-// (AMRADR) is DisableableFromShell=no; YR-only SW keys (NARADR SpyPlane,
-// tech-centre ForceShield) do not count -- so the radars stay.
+// (AMRADR) is DisableableFromShell=no; unsupported SW keys (SpyPlane,
+// ForceShield) do not count -- so the radars stay.
 bool rp_is_lobby_sw_building(const Rules& rules, const std::string& id) {
-    const std::string sw = rp_building_classic_sw(rules, id);
+    const std::string sw = rp_building_supported_sw(rules, id);
     if (sw.empty()) return false;
     return rp_flag(rules, sw, "DisableableFromShell");
 }
@@ -201,26 +201,28 @@ struct RpSwGrant {
     bool is_powered = false;
     double recharge_secs = 0.0;
     bool disableable = false;   // DisableableFromShell=yes (the lobby checkbox)
-    double radius = 15.0; // PsychicRevealRadius; passed through existing saved effect parameters
+    double radius = 15.0; // Cell radius for area-targeted Yuri powers
 };
 
-// W2-AN-04/19: the classic SW Type= names -> the engine enum.
+// Supported SW Type= names -> the engine enum.
 ra2engine::SuperweaponType rp_sw_type_of(const std::string& type_upper) {
     using T = ra2engine::SuperweaponType;
     if (type_upper == "MULTIMISSILE") return T::Nuke;
     if (type_upper == "IRONCURTAIN") return T::IronCurtain;
     if (type_upper == "LIGHTNINGSTORM") return T::LightningStorm;
     if (type_upper == "CHRONOSPHERE") return T::ChronoSphere;
+    if (type_upper == "CHRONOWARP") return T::ChronoWarp;
     if (type_upper == "PARADROP") return T::ParaDrop;
     if (type_upper == "AMERPARADROP") return T::AmerParaDrop;
+    if (type_upper == "PSYCHICDOMINATOR") return T::PsychicDominator;
+    if (type_upper == "GENETICCONVERTER") return T::GeneticConverter;
     if (type_upper == "PSYCHICREVEAL") return T::PsychicReveal;
     return T::None;
 }
 
-// Per roster building: the classic SW its SuperWeapon= key grants [RE:
+// Per roster building: the supported SW its SuperWeapon= key grants [RE:
 // superweapon.md §1/§4 -- [<Special>] Type= names the effect, RechargeTime=
-// is minutes, IsPowered= the low-power pause]. YR-only keys are ignored
-// (W2-AN-19). W2-AN-04: every classic type now has an effect.
+// is minutes, IsPowered= the low-power pause].
 std::vector<RpSwGrant> rp_superweapon_table(const BuildingAssets& ba, const Rules& rules) {
     std::vector<RpSwGrant> t(ba.roster.size());
     for (std::size_t i = 0; i < ba.roster.size(); ++i) {
@@ -231,7 +233,17 @@ std::vector<RpSwGrant> rp_superweapon_table(const BuildingAssets& ba, const Rule
             ra2engine::diag::note("CAPABILITY_UNSUPPORTED building=%s superweapon=%s type=%s",ba.roster[i].id.c_str(),sw.c_str(),rules.section_string(sw,"Type","").c_str());
             continue;
         }
-        t[i].radius=std::clamp(rules.section_double("CombatDamage","PsychicRevealRadius",15.0),0.0,256.0);
+        double default_radius = 15.0;
+        if (t[i].type == ra2engine::SuperweaponType::PsychicReveal)
+            default_radius = rules.section_double("CombatDamage", "PsychicRevealRadius", 15.0);
+        else if (t[i].type == ra2engine::SuperweaponType::PsychicDominator)
+            default_radius = rules.section_double(
+                sw, "Range", rules.section_double(sw, "DominatorCaptureRange",
+                    rules.section_double("CombatDamage", "PsychicDominatorRadius", 15.0)));
+        else if (t[i].type == ra2engine::SuperweaponType::GeneticConverter)
+            default_radius = rules.section_double(
+                sw, "Range", rules.section_double("CombatDamage", "GeneticConverterRadius", 5.0));
+        t[i].radius=std::clamp(default_radius,0.0,256.0);
         t[i].is_powered = rp_flag(rules, sw, "IsPowered");
         t[i].recharge_secs = rules.section_double(sw, "RechargeTime", 5.0) * 60.0;
         t[i].disableable = rp_flag(rules, sw, "DisableableFromShell");
@@ -263,10 +275,14 @@ void rp_sync_superweapons(ra2engine::World& w, const std::vector<RpSwGrant>& tab
             for (const RpSwGrant* g : held) keep |= g->type == t;
             if (!keep) w.revoke_superweapon_type(h, t);
         }
-        for (const RpSwGrant* g : held)
+        for (const RpSwGrant* g : held) {
+            const bool area_yuri = g->type == ra2engine::SuperweaponType::PsychicReveal ||
+                                   g->type == ra2engine::SuperweaponType::PsychicDominator ||
+                                   g->type == ra2engine::SuperweaponType::GeneticConverter;
+            const double spread = area_yuri ? g->radius : nuke.cell_spread;
             w.grant_superweapon_type(h, g->type, g->recharge_secs, g->is_powered, nuke.damage,
-                                     g->type==ra2engine::SuperweaponType::PsychicReveal ? g->radius : nuke.cell_spread,
-                                     nuke.percent_at_max, nuke.verses);
+                                     spread, nuke.percent_at_max, nuke.verses);
+        }
     }
 }
 

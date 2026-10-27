@@ -258,8 +258,51 @@ bool World::fire_superweapon_at(int house, SuperweaponType type, int cx, int cy,
             reveal_source(house,cx,cy,std::clamp(static_cast<int>(rec->eff_cell_spread),0,256));
             an_event(SwEvent::Activated,house,type,cx,cy);
             break;
+        case SuperweaponType::PsychicDominator:
+        case SuperweaponType::GeneticConverter: {
+            std::vector<int> affected;
+            const double radius = std::max(0.5, rec->eff_cell_spread) * kLept;
+            for (int i = 0; i < static_cast<int>(units_.size()); ++i) {
+                const Unit& u = units_[static_cast<std::size_t>(i)];
+                if (!u.alive || u.die_time >= 0.0 || u.cargo_of >= 0 || u.is_aircraft ||
+                    !is_enemy(house, u.house) ||
+                    om::hypot((u.fx - cx) * kLept, (u.fy - cy) * kLept) > radius)
+                    continue;
+                if (type == SuperweaponType::PsychicDominator) {
+                    if (psionic_target_ok(i) && u.an.iron_left_frames <= 0.0 &&
+                        u.w7.mc_controller < 0 && u.w7.mc_building < 0)
+                        affected.push_back(i);
+                } else if (u.is_infantry) {
+                    affected.push_back(i);
+                }
+            }
+            if (type == SuperweaponType::PsychicDominator) {
+                for (int i : affected) set_unit_owner(i, house);
+                Unit payload;
+                payload.house = house;
+                payload.w_damage = 1000;
+                payload.w_cell_spread = 1.5;
+                payload.w_percent_at_max = 0.1;
+                payload.w_verses.assign(11, 100);
+                payload.w_affects_allies = false;
+                damage_area(*this, units_, buildings_, occ_, payload, -1, -1, cx * kLept, cy * kLept, deck_z(cx, cy));
+            } else {
+                const auto brute = an_.types.find("BRUTE");
+                if (brute == an_.types.end()) return false;
+                for (int i : affected) {
+                    if (i < 0 || i >= static_cast<int>(units_.size())) continue;
+                    const int x = units_[static_cast<std::size_t>(i)].cell_x;
+                    const int y = units_[static_cast<std::size_t>(i)].cell_y;
+                    an_damage_unit(i, units_[static_cast<std::size_t>(i)].hp, -1);
+                    if (units_[static_cast<std::size_t>(i)].die_time < 0.0) continue;
+                    an_spawn("BRUTE", house, x, y);
+                }
+            }
+            an_event(SwEvent::Activated, house, type, cx, cy);
+            break;
+        }
         default:
-            return false;   // YR-only types: never granted in a classic game
+            return false;
     }
     rec->sw.on_fired();   // full recharge (§1)
     an_.any = true;

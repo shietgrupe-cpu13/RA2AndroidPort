@@ -40,19 +40,108 @@ static bool engine_ini_set(const std::string& key, const std::string& value) {
     f.write(text.data(), static_cast<std::streamsize>(text.size()));
     return static_cast<bool>(f);
 }
-void campaign_checkpoint_set(const std::string& map, const std::string& side, int difficulty) {
-    if (engine_ini_set("ResumeCampaign", map + "," + side + "," + std::to_string(difficulty)))
-        SDL_Log("[lifecycle] campaign checkpoint: %s (%s, difficulty %d)", map.c_str(), side.c_str(), difficulty);
-}
-void campaign_checkpoint_clear() {
-    engine_ini_set("ResumeCampaign", "");
-}
 struct CampaignCheckpoint {
     std::string map, side;
     int difficulty = 1;
     bool valid() const { return !map.empty() && !side.empty(); }
 };
+static std::string campaign_progress_path() {
+    const std::string dir = save_games_dir();
+    return dir.empty() ? std::string() : dir + "/CAMPAIGN.PROGRESS";
+}
+static bool campaign_progress_valid_map(const std::string& map) {
+    if (map.empty() || map.size() > 32) return false;
+    bool has_name = false;
+    for (unsigned char c : map)
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))
+            has_name = true;
+        else if (c != '_' && c != '-' && c != '.')
+            return false;
+    return has_name && map.find("..") == std::string::npos;
+}
+static void campaign_progress_write(const CampaignCheckpoint& c) {
+    if (!g_user_settings) return;
+    const std::string path = campaign_progress_path();
+    if (path.empty()) return;
+    const std::string side = camp::up(c.side) == "NOD" ? "NOD" : "GDI";
+    const std::string tmp = path + ".part";
+    {
+        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+        if (!f) {
+            SDL_Log("[lifecycle] campaign progress write failed: %s", tmp.c_str());
+            return;
+        }
+        f << "RA2-CAMPAIGN-PROGRESS 1\nMap=" << c.map << "\nSide=" << side
+          << "\nDifficulty=" << std::clamp(c.difficulty, 0, 2) << "\n";
+        if (!f) {
+            SDL_Log("[lifecycle] campaign progress write failed: %s", tmp.c_str());
+            std::error_code ec;
+            std::filesystem::remove(tmp, ec);
+            return;
+        }
+    }
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+    ec.clear();
+    std::filesystem::rename(tmp, path, ec);
+    if (ec) {
+        SDL_Log("[lifecycle] campaign progress publish failed: %s", ec.message().c_str());
+        std::filesystem::remove(tmp, ec);
+    }
+}
+static CampaignCheckpoint campaign_progress_read() {
+    CampaignCheckpoint c;
+    if (!g_user_settings) return c;
+    const std::string path = campaign_progress_path();
+    if (path.empty()) return c;
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return c;
+    const auto invalid = [&]() {
+        SDL_Log("[lifecycle] campaign progress ignored: invalid or unsupported file %s", path.c_str());
+        return CampaignCheckpoint{};
+    };
+    std::string header, map, side, difficulty;
+    if (!std::getline(f, header) || !std::getline(f, map) || !std::getline(f, side) ||
+        !std::getline(f, difficulty))
+        return invalid();
+    for (std::string* line : {&header, &map, &side, &difficulty})
+        if (!line->empty() && line->back() == '\r') line->pop_back();
+    if (header != "RA2-CAMPAIGN-PROGRESS 1" || map.rfind("Map=", 0) != 0 ||
+        side.rfind("Side=", 0) != 0 || difficulty.rfind("Difficulty=", 0) != 0)
+        return invalid();
+    c.map = map.substr(4);
+    c.side = camp::up(side.substr(5));
+    if (!campaign_progress_valid_map(c.map) || (c.side != "GDI" && c.side != "NOD")) return invalid();
+    const std::string value = difficulty.substr(11);
+    if (value.empty() || value.size() > 1 || value[0] < '0' || value[0] > '2') return invalid();
+    c.difficulty = value[0] - '0';
+    std::string extra;
+    if (std::getline(f, extra)) return invalid();
+    return c;
+}
+static void campaign_progress_clear() {
+    if (!g_user_settings) return;
+    const std::string path = campaign_progress_path();
+    if (path.empty()) return;
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+    if (ec) SDL_Log("[lifecycle] campaign progress clear failed: %s", ec.message().c_str());
+}
+void campaign_checkpoint_set(const std::string& map, const std::string& side, int difficulty) {
+    if (!campaign_progress_valid_map(map) || (camp::up(side) != "GDI" && camp::up(side) != "NOD")) {
+        SDL_Log("[lifecycle] invalid campaign checkpoint refused: %s (%s)", map.c_str(), side.c_str());
+        return;
+    }
+    if (engine_ini_set("ResumeCampaign", map + "," + side + "," + std::to_string(difficulty)))
+        SDL_Log("[lifecycle] campaign checkpoint: %s (%s, difficulty %d)", map.c_str(), side.c_str(), difficulty);
+    campaign_progress_write(CampaignCheckpoint{map, side, difficulty});
+}
+void campaign_checkpoint_clear() {
+    engine_ini_set("ResumeCampaign", "");
+}
 CampaignCheckpoint campaign_checkpoint_get() {
+    const CampaignCheckpoint progress = campaign_progress_read();
+    if (progress.valid()) return progress;
     CampaignCheckpoint c;
     const std::string path = settings_file_path();
     if (path.empty()) return c;
@@ -63,7 +152,10 @@ CampaignCheckpoint campaign_checkpoint_get() {
     c.map = v->substr(0, a);
     c.side = b == std::string::npos ? v->substr(a + 1) : v->substr(a + 1, b - a - 1);
     if (b != std::string::npos) c.difficulty = std::clamp(std::atoi(v->c_str() + b + 1), 0, 2);
-    if (camp::up(c.side) != "GDI" && camp::up(c.side) != "NOD") c = CampaignCheckpoint{};
+    if (!campaign_progress_valid_map(c.map) ||
+        (camp::up(c.side) != "GDI" && camp::up(c.side) != "NOD"))
+        return CampaignCheckpoint{};
+    campaign_progress_write(c);
     return c;
 }
 
@@ -219,6 +311,7 @@ private:
     void discard() {
         if (kind_ == Campaign) {
             campaign_checkpoint_clear();
+            campaign_progress_clear();
             SDL_Log("[lifecycle] campaign checkpoint discarded");
             return;
         }

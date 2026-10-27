@@ -154,6 +154,24 @@ TEST_CASE("addon maps: tokens reject paths and validation goes beyond the extens
  CHECK_THROWS(inspect_addon_map("[Map]\nSize=0,0,999999,20\n[IsoMapPack5]\n1=AAAA\n","maps/test.yrm"));
  CHECK_THROWS(inspect_addon_map("[Map]\nSize=0,0,20,20\n[Triggers]\nFoo=1\n[IsoMapPack5]\n1=AAAA\n","maps/test.yrm"));
 }
+
+TEST_CASE("maplist: source filter separates installed and imported maps") {
+ using namespace ra2engine;
+ std::vector<MapEntry> entries(3);
+ entries[0].file_name="stock-a.map";entries[0].display_name="South Pacific";
+ entries[1].file_name="maps/custom.yrm";entries[1].addon=true;
+ entries[1].display_name="May Day (2)";
+ entries[2].file_name="stock-b.map";entries[2].display_name="Southern Cross";
+ const std::vector<int> all{0,1,2}, standard{0,2}, addon{1};
+ CHECK(map_catalog_indices(entries,MapCatalogFilter::All)==all);
+ CHECK(map_catalog_indices(entries,MapCatalogFilter::Standard)==standard);
+ CHECK(map_catalog_indices(entries,MapCatalogFilter::Addon)==addon);
+ CHECK(map_catalog_search_indices(entries,MapCatalogFilter::All,"sOuTh")== (std::vector<int>{0,2}));
+ CHECK(map_catalog_search_indices(entries,MapCatalogFilter::Addon,"day")== (std::vector<int>{1}));
+ CHECK(map_catalog_search_indices(entries,MapCatalogFilter::All,"missing").empty());
+ CHECK(map_catalog_search_indices(entries,MapCatalogFilter::Standard,"")==standard);
+}
+
 TEST_CASE("addon maps: retail terrain copied as loose YRM is read, validated and catalogued independently") {
  using namespace ra2engine;
  const auto dir=install_dir();if(slurp_ml(dir+"multimd.mix").empty()){MESSAGE("skipped: real maps unavailable");return;}
@@ -176,6 +194,6 @@ TEST_CASE("addon maps: retail terrain copied as loose YRM is read, validated and
  const auto count=cat.entries.size();append_addon_maps(cat,temp.string(),"");
  REQUIRE(cat.entries.size()==count+1);REQUIRE(cat.rejected_addons.size()==1);
  const auto it=std::find_if(cat.entries.begin(),cat.entries.end(),[](const MapEntry& e){return e.file_name=="maps/test.yrm";});
- REQUIRE(it!=cat.entries.end());CHECK(it->max_players>=2);CHECK(it->max_players<=8);
+ REQUIRE(it!=cat.entries.end());CHECK(it->addon);CHECK(it->max_players>=2);CHECK(it->max_players<=8);
  CHECK(read_catalog_map(cat,it->file_name)==bytes);
 }

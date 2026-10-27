@@ -107,7 +107,7 @@
         if (it != sw_timer_names_.end()) return it->second;
         std::string name;
         for (const auto& bt : ba_.roster) {
-            const std::string sw = rp_building_classic_sw(rules_, bt.id);
+            const std::string sw = rp_building_supported_sw(rules_, bt.id);
             if (sw.empty() || rp_sw_type_of(rp_upper(rules_.section_string(sw, "Type", ""))) != t) continue;
             if (!rp_flag(rules_, sw, "ShowTimer")) break;
             const std::string ui = rules_.section_string(sw, "UIName", "");

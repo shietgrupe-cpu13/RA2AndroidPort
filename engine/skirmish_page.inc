@@ -162,8 +162,10 @@ inline std::string fmt_d(const std::string& f, int v) {
 
 class SkirmishSetupScene : public Scene {
 public:
-    SkirmishSetupScene(const Rules& rules, bool no_audio, const MenuArt& art)
-        : rules_(rules), no_audio_(no_audio), art_(art) {
+    SkirmishSetupScene(const Rules& rules, bool no_audio, const MenuArt& art,
+                       bool page_transition = false)
+        : rules_(rules), no_audio_(no_audio), art_(art),
+          enter_sound_pending_(page_transition) {
         countries_ = gf_lobby_countries(!rules.section_string("YuriCountry","Side","").empty());
         text_.load(countries_);
         // [Rules] [MultiplayerDialogSettings] defaults + slider ranges.
@@ -221,12 +223,16 @@ public:
         std::cerr << "[lobby] maps=" << maps().size() << " map=" << map_file()
                   << " max=" << map_max() << " ai=" << ra2engine::lobby_ai_count(st_) << "\n";
     }
-    ~SkirmishSetupScene() override { set_editing(false); }
+    ~SkirmishSetupScene() override { set_editing(false); set_searching(false); }
 
     void handle(const ra2engine::InputEvent& ev) override;
     void update(double dt) override {
         clock_ += dt;
         if (!art_.audio || !art_.audio->sys.enabled || !art_.audio->sys.mixer) return;
+        if (enter_sound_pending_) {
+            art_.audio->sys.mixer->play("menu:slidein");
+            enter_sound_pending_ = false;
+        }
         if (!art_.audio->sys.mixer->playing("menu:grinder")) art_.audio->sys.mixer->play("menu:grinder");
         art_.audio->sys.out.pump(*art_.audio->sys.mixer);
     }
@@ -248,17 +254,23 @@ public:
 
 private:
     enum Mode { MODE_SETUP, MODE_CUSTOMIZE };
-    enum Combo { CB_NONE, CB_AI, CB_COUNTRY, CB_COLOR, CB_TEAM, CB_SPAWN };
+    enum Combo { CB_NONE, CB_AI, CB_COUNTRY, CB_COLOR, CB_TEAM, CB_SPAWN, CB_MAP_FILTER };
     enum Check { CK_SHORT, CK_MCV, CK_CRATES, CK_SW, CK_BOA, CK_COUNT };
     enum Slider { SL_SPEED, SL_CREDITS, SL_UNITS, SL_COUNT };
     enum Act { A_NONE, A_START, A_CHOOSE, A_BACK, A_USEMAP, A_RANDMAP, A_CANCEL };
 
     static constexpr int kWinW = 1280, kWinH = 720;
     static ShellXform xform() {
-        // This independent panel has no retail shell/sidebar slices. Applying
-        // yuri_shell_rect to its sub-controls distorts arrows and readouts.
-        const double s=std::min(g_ui_w/640.0,g_ui_h/480.0);
-        return {s,(g_ui_w-640*s)/2,(g_ui_h-480*s)/2,false};
+        // Fill wide landscape canvases horizontally while retaining the
+        // 640x480 control layout and its vertical sizing.
+        const double aspect = static_cast<double>(g_ui_w) / std::max(1, g_ui_h);
+        if (aspect > 640.0 / 480.0) {
+            const double sx = static_cast<double>(g_ui_w) / 640.0;
+            const double sy = static_cast<double>(g_ui_h) / 480.0;
+            return {sy, 0, 0, false, sx, sy};
+        }
+        const double s = std::min(g_ui_w / 640.0, g_ui_h / 480.0);
+        return {s, (g_ui_w - 640 * s) / 2, (g_ui_h - 480 * s) / 2, false};
     }
     static void to_logical(int dx, int dy, int& lx, int& ly) {
         const ShellXform xf = xform();
@@ -285,7 +297,9 @@ private:
     static ra2engine::SbRect preview_rect() { return {200,240,328,180}; }
     static ra2engine::SbRect status_rect() { return {200, 420, 328, 14}; }
     static ra2engine::SbRect type_list_rect() { return {30, 126, 195, 260}; }
-    static ra2engine::SbRect map_list_rect() { return {10,30,180,398}; }
+    static ra2engine::SbRect map_list_rect() { return {10,30,180,378}; }
+    static ra2engine::SbRect map_filter_rect() { return {10,5,180,20}; }
+    static ra2engine::SbRect map_search_rect() { return {10,411,180,18}; }
 
     static constexpr int kBtnX = 484, kBtnW = 156, kBtnH = 42;
     std::vector<ShellButton> buttons() const {
@@ -310,6 +324,38 @@ private:
         return (i >= 0 && i < static_cast<int>(maps().size())) ? &maps()[(size_t)i] : nullptr;
     }
     std::string map_file() const { const auto* m = map_at(map_ix_); return m ? m->file_name : ""; }
+    std::string map_filter_label() const {
+        switch (map_filter_) {
+            case ra2engine::MapCatalogFilter::Addon: return "Maps: Custom";
+            case ra2engine::MapCatalogFilter::Standard: return "Maps: Official";
+            default: return "Maps: All";
+        }
+    }
+    void rebuild_map_list() {
+        map_list_ = ShellList{};
+        map_list_.r = map_list_rect();
+        const std::vector<int> indices = catalog_
+            ? ra2engine::map_catalog_search_indices(maps(), map_filter_, map_search_)
+            : std::vector<int>{};
+        for (int i : indices) {
+            const auto& entry = maps()[static_cast<std::size_t>(i)];
+            map_list_.items.push_back(entry.display_name);
+            map_list_.data.push_back(i);
+        }
+        map_list_.visible = 23;
+        map_list_.sel = -1;
+        for (int i = 0; i < static_cast<int>(map_list_.data.size()); ++i) {
+            if (map_list_.data[static_cast<std::size_t>(i)] == map_ix_) {
+                map_list_.sel = i;
+                break;
+            }
+        }
+        map_list_.reveal(map_list_.sel);
+    }
+    int map_index_at_list(int list_index) const {
+        return list_index >= 0 && list_index < static_cast<int>(map_list_.data.size())
+                   ? map_list_.data[static_cast<std::size_t>(list_index)] : -1;
+    }
     int map_max_of(int i) const {
         const auto* m = map_at(i);
         return (m && m->max_players > 1) ? std::min(8, m->max_players) : 8;
@@ -401,10 +447,19 @@ private:
         combo_ = kind;
         combo_row_ = row;
         list_ = ShellList{};
-        ra2engine::SbRect face = kind == CB_AI ? ai_rect(row) : kind == CB_COUNTRY ? country_rect(row)
+        ra2engine::SbRect face = kind == CB_MAP_FILTER ? map_filter_rect() :
+                                 kind == CB_AI ? ai_rect(row) : kind == CB_COUNTRY ? country_rect(row)
                                                                                  : kind == CB_TEAM ? team_rect(row) : kind==CB_SPAWN?spawn_rect(row):color_rect(row);
         int cur = 0;
-        if (kind == CB_AI) {
+        if (kind == CB_MAP_FILTER) {
+            list_.items = {"Maps: All", "Maps: Custom", "Maps: Official"};
+            list_.data = {static_cast<int>(ra2engine::MapCatalogFilter::All),
+                          static_cast<int>(ra2engine::MapCatalogFilter::Addon),
+                          static_cast<int>(ra2engine::MapCatalogFilter::Standard)};
+            cur = map_filter_ == ra2engine::MapCatalogFilter::All ? 0
+                : map_filter_ == ra2engine::MapCatalogFilter::Addon ? 1 : 2;
+            list_.visible = 3;
+        } else if (kind == CB_AI) {
             const int order[5] = {ra2engine::kLobbyAiNone, ra2engine::kLobbyAiEasy,
                                   ra2engine::kLobbyAiMedium, ra2engine::kLobbyAiBrutal, ra2engine::kLobbyAiDebug};
             for (int v : order) {
@@ -455,7 +510,10 @@ private:
         if (combo_ == CB_NONE) return;
         if (commit && list_.sel >= 0 && list_.sel < static_cast<int>(list_.data.size())) {
             const int v = list_.data[(size_t)list_.sel];
-            if (combo_ == CB_AI) ra2engine::lobby_set_ai(st_, combo_row_, v);
+            if (combo_ == CB_MAP_FILTER) {
+                map_filter_ = static_cast<ra2engine::MapCatalogFilter>(v);
+                rebuild_map_list();
+            } else if (combo_ == CB_AI) ra2engine::lobby_set_ai(st_, combo_row_, v);
             else if (combo_ == CB_COUNTRY) ra2engine::lobby_set_country(st_, combo_row_, v);
             else if(combo_==CB_SPAWN) st_.rows[combo_row_].spawn=v;
             else if(combo_==CB_TEAM) st_.rows[combo_row_].team=v;
@@ -468,6 +526,7 @@ private:
         // W9-04-02: a tap on the edit while editing brings the keyboard back
         // after the IME's Back hid it.
         if (on == editing_ && (!on || SDL_IsTextInputActive())) return;
+        if (on) set_searching(false);
         const bool was = editing_;
         editing_ = on;
         // Show the soft keyboard on Android; restore the previous text-input
@@ -480,6 +539,20 @@ private:
             ime_open(d.x, d.y, d.w, d.h, st_.name, ra2engine::kOsImeText, ra2engine::kLobbyNameMax);
         }
         else if (ime_screen_keyboard() || !text_was_active_) SDL_StopTextInput();   // W9-04-03
+    }
+    void set_searching(bool on) {
+        if (on == search_editing_ && (!on || SDL_IsTextInputActive())) return;
+        if (on) {
+            set_editing(false);
+            if (!search_editing_) text_was_active_ = SDL_IsTextInputActive();
+            search_editing_ = true;
+            const ra2engine::SbRect r = map_search_rect();
+            const SDL_Rect d = xform().dev(r.x, r.y, r.w, r.h);
+            ime_open(d.x, d.y, d.w, d.h, map_search_, ra2engine::kOsImeText, 64);
+        } else {
+            search_editing_ = false;
+            if (ime_screen_keyboard() || !text_was_active_) SDL_StopTextInput();
+        }
     }
     void play_ui(const char* key) const {
         if (art_.audio && art_.audio->sys.enabled && art_.audio->sys.mixer)
@@ -495,25 +568,20 @@ private:
         type_list_.data = {1};
         type_list_.sel = 0;
         type_list_.visible = 16;
-        map_list_ = ShellList{};
-        map_list_.r = map_list_rect();
-        for (int i = 0; i < static_cast<int>(maps().size()); ++i) {
-            map_list_.items.push_back(maps()[(size_t)i].display_name);
-            map_list_.data.push_back(i);
-        }
-        map_list_.visible = 24;
-        map_list_.sel = map_ix_;
-        map_list_.reveal(map_ix_);
+        rebuild_map_list();
     }
     void leave_customize(bool use) {
-        if (use && map_list_.sel >= 0) {
-            map_ix_ = map_list_.sel;
+        if (use && map_index_at_list(map_list_.sel) >= 0) {
+            map_ix_ = map_index_at_list(map_list_.sel);
             ra2engine::lobby_apply_max_players(st_, map_max());   // 0x683920 / 0x6836F0
         }
         mode_ = MODE_SETUP;
     }
     // The map shown in the preview well (the pending pick on 0x6B).
-    int shown_map() const { return mode_ == MODE_CUSTOMIZE ? map_list_.sel : map_ix_; }
+    int shown_map() const {
+        return mode_ == MODE_CUSTOMIZE && map_index_at_list(map_list_.sel) >= 0
+                   ? map_index_at_list(map_list_.sel) : map_ix_;
+    }
 
     // --- persistence (0x6829F0 commit -> 0x00670380 / 0x005D91B0) ---
     void commit_and_save() {
@@ -580,7 +648,9 @@ private:
             case A_CHOOSE: enter_customize(); return;
             case A_BACK:
                 commit_and_save();                       // Back commits + saves too (§1.5)
-                next_ = new ShellScene(rules_, no_audio_, art_, PAGE_SINGLE);
+                if (art_.audio && art_.audio->sys.enabled && art_.audio->sys.mixer)
+                    art_.audio->sys.mixer->play("menu:slideout");
+                next_ = new ShellScene(rules_, no_audio_, art_, PAGE_SINGLE, true);
                 return;
             case A_USEMAP: leave_customize(true); return;
             case A_CANCEL: leave_customize(false); return;
@@ -601,12 +671,16 @@ private:
     ra2engine::LobbyState st_;
     std::unique_ptr<ra2engine::MapCatalog> catalog_;
     int map_ix_ = -1;
+    ra2engine::MapCatalogFilter map_filter_ = ra2engine::MapCatalogFilter::All;
     Mode mode_ = MODE_SETUP;
     Combo combo_ = CB_NONE;
     int combo_row_ = 0;
     ShellList list_, type_list_, map_list_;
     bool editing_ = false;
+    bool search_editing_ = false;
+    std::string map_search_;
     bool text_was_active_ = true;
+    bool enter_sound_pending_ = false;
     int drag_ = -1;
     int mx_ = -1, my_ = -1;
     bool down_ = false;
@@ -708,16 +782,18 @@ std::map<std::string, ra2engine::SbRect> SkirmishSetupScene::targets() const {
         if (b.action == A_START) t["start"] = b.rect;          // pre-0x102 aliases
         if (b.action == A_BACK || b.action == A_CANCEL) t["back"] = b.rect;
     }
+    t["map:filter"] = map_filter_rect();
     if (confirm_.open()) return t;                             // the message box owns input
     if (mode_ == MODE_CUSTOMIZE) {
         for (int i = map_list_.top; i < map_list_.top + map_list_.rows(); ++i)
-            t["map:" + maps()[(size_t)i].file_name] = map_list_.item_rect(i);
+            if (const auto* m = map_at(map_index_at_list(i))) t["map:" + m->file_name] = map_list_.item_rect(i);
         if (map_list_.scrolls()) {
             t["list:up"] = map_list_.strip_up();
             t["list:down"] = map_list_.strip_down();
         }
         return t;
     }
+    if (mode_ == MODE_SETUP) t["edit:map_search"] = map_search_rect();
     if (combo_ != CB_NONE) {
         for (int i = list_.top; i < list_.top + list_.rows(); ++i) {
             t["item:" + std::to_string(i)] = list_.item_rect(i);
@@ -730,6 +806,8 @@ std::map<std::string, ra2engine::SbRect> SkirmishSetupScene::targets() const {
         return t;
     }
     t["edit:name"] = name_rect();
+    for (int i = map_list_.top; i < map_list_.top + map_list_.rows(); ++i)
+        if (const auto* m = map_at(map_index_at_list(i))) t["map:" + m->file_name] = map_list_.item_rect(i);
     for (int k = 0; k < visible_rows(); ++k) {
         const std::string n = std::to_string(k);
         if (k > 0) t["combo:ai" + n] = ai_rect(k);
@@ -789,12 +867,17 @@ void SkirmishSetupScene::play_probe(ra2play::Probe& p) {
     p.set("game_speed", st_.game_speed);
     for (int c = 0; c < CK_COUNT; ++c) p.set(std::string("check(") + check_id(c) + ")", check_val(c) ? 1 : 0);
     p.set("crates", st_.crates ? 1 : 0);
-    p.set_s("combo_open", combo_ == CB_AI ? "ai" : combo_ == CB_COUNTRY ? "country"
+    p.set_s("combo_open", combo_ == CB_MAP_FILTER ? "map_filter" :
+                           combo_ == CB_AI ? "ai" : combo_ == CB_COUNTRY ? "country"
                                             : combo_ == CB_COLOR ? "color" : "");
     p.set("combo_row", combo_ != CB_NONE ? combo_row_ : -1);
     p.set("combo_count", combo_ != CB_NONE ? static_cast<double>(list_.items.size()) : 0.0);
     p.set("map_ix", map_ix_);
     p.set("map_count", static_cast<double>(maps().size()));
+    p.set_s("map_filter", map_filter_label());
+    p.set_s("map_search", map_search_);
+    p.set("searching_maps", search_editing_ ? 1 : 0);
+    p.set("visible_map_count", static_cast<double>(map_list_.items.size()));
     if (const auto* m = map_at(map_ix_)) {
         p.set_s("map", m->file_name);
         p.set_s("map_name", m->display_name);
@@ -820,10 +903,19 @@ void SkirmishSetupScene::render(ra2engine::Platform& plat, ra2engine::TextureCac
     const ShellPainter p{ren,tc,art_,xf};
     p.fill(p.dev(8,27,184,403),18,20,30);p.fill(p.dev(198,27,332,202),18,20,30);
     p.fill(p.dev(533,27,99,396),18,20,30);
-    p.label("MAPS",10,5,180,20,1);
+    p.combo(map_filter_rect(), map_filter_label(), true,
+            combo_ == CB_MAP_FILTER);
     p.label("Players",200,5,72,20,0);p.label("Side",315,5,95,20,0);
     p.label("Color",416,5,45,20,0);p.label("Team",467,5,34,20,0);p.label("Start",503,5,28,20,0);
-    if(mode_==MODE_SETUP)map_list_.draw(p,false);
+    if(mode_==MODE_SETUP) {
+        map_list_.draw(p,false);
+        if (map_list_.items.empty())
+            p.label(map_filter_ == ra2engine::MapCatalogFilter::Addon
+                        ? "No custom maps imported" : "No maps available",
+                    14, 30, 168, 24, 1);
+        p.edit(map_search_rect(), map_search_.empty() ? "Search maps..." : map_search_,
+               search_editing_, std::fmod(clock_, 1.0) < 0.5);
+    }
     for(const auto& button:btns){const SDL_Rect r=p.dev(button.rect);p.fill(r,65,20,24);
         SDL_SetRenderDrawColor(ren,180,135,65,255);SDL_RenderDrawRect(ren,&r);
         p.label(button.label,button.rect.x,button.rect.y,button.rect.w,button.rect.h,1,button.enabled);}
@@ -894,7 +986,6 @@ void SkirmishSetupScene::render(ra2engine::Platform& plat, ra2engine::TextureCac
             p.label(sl_lbl[s], lr.x, lr.y, lr.w, lr.h, 0);
             p.trackbar(slider_rect(s), slider_pos(s), slider_range(s), true, slider_text(s), true);
         }
-        if (combo_ != CB_NONE) list_.draw(p);
     } else {
         // --- dialog 0x6B: Select Engagement / Game Type / Game Map ---
         p.header(text_.sel_engagement, 34, 32, 385, 19);
@@ -902,7 +993,12 @@ void SkirmishSetupScene::render(ra2engine::Platform& plat, ra2engine::TextureCac
         p.label(text_.game_map, 252, 97, 195, 16, 0);
         type_list_.draw(p, false);
         map_list_.draw(p, false);
+        if (map_list_.items.empty())
+            p.label(map_filter_ == ra2engine::MapCatalogFilter::Addon
+                        ? "No custom maps imported" : "No maps available",
+                    14, 30, 168, 24, 1);
     }
+    if (combo_ != CB_NONE) list_.draw(p);
 
     // --- status line 0x695: the hovered control's STT:* tooltip ---
     const bool yuri_preview=st_.rows[0].country>=0 && st_.rows[0].country<static_cast<int>(countries_.size()) && countries_[st_.rows[0].country]=="YuriCountry";
@@ -941,11 +1037,22 @@ void SkirmishSetupScene::handle(const ra2engine::InputEvent& ev) {
                 list_.reveal(++list_.sel);
             return;
         }
+        if (search_editing_) {
+            if (ev.key == ra2engine::kKeyBackspace) {
+                if (!map_search_.empty()) {
+                    map_search_.pop_back();
+                    rebuild_map_list();
+                }
+                return;
+            }
+            if (ev.key == ra2engine::kKeyEnter) { set_searching(false); return; }
+        }
         if (editing_) {
             if (ev.key == ra2engine::kKeyBackspace) { if (!st_.name.empty()) st_.name.pop_back(); return; }
             if (ev.key == ra2engine::kKeyEnter) { set_editing(false); return; }
         }
         if (ev.key == ra2engine::kKeyEscape) {   // Esc = the dialog's Cancel = Back / Cancel
+            if (search_editing_) { set_searching(false); return; }
             set_editing(false);
             if (mode_ == MODE_CUSTOMIZE) leave_customize(false);
             else press(A_BACK, ev);
@@ -960,6 +1067,15 @@ void SkirmishSetupScene::handle(const ra2engine::InputEvent& ev) {
         return;
     }
     if (ev.kind == InputEvent::Text) {
+        if (search_editing_) {
+            for (const char* c = ev.text; *c; ++c) {
+                const unsigned char ch = static_cast<unsigned char>(*c);
+                if (ch >= 32 && ch < 127 && map_search_.size() < 64)
+                    map_search_ += static_cast<char>(ch);
+            }
+            rebuild_map_list();
+            return;
+        }
         if (!editing_) return;
         for (const char* c = ev.text; *c; ++c) {
             const unsigned char ch = static_cast<unsigned char>(*c);
@@ -982,6 +1098,7 @@ void SkirmishSetupScene::handle(const ra2engine::InputEvent& ev) {
         return;
     }
     if (ev.kind != InputEvent::PointerDown || ev.button != InputEvent::Left) return;
+    if (search_editing_) set_searching(false);
 
     // --- an open list owns the click ---
     if (combo_ != CB_NONE) {
@@ -996,10 +1113,21 @@ void SkirmishSetupScene::handle(const ra2engine::InputEvent& ev) {
     for (const ShellButton& b : buttons())
         if (b.enabled && b.rect.contains(lx, ly)) { set_editing(false); press(b.action, ev); return; }
 
+    if (map_filter_rect().contains(lx, ly)) { open_combo(CB_MAP_FILTER, 0); return; }
+    if (mode_ == MODE_SETUP && map_search_rect().contains(lx, ly)) {
+        set_searching(true);
+        return;
+    }
     if (mode_ == MODE_SETUP && map_list_rect().contains(lx,ly)) {
         if(map_list_.strip_up().contains(lx,ly)){map_list_.scroll(-6);return;}
         if(map_list_.strip_down().contains(lx,ly)){map_list_.scroll(6);return;}
-        const int picked=map_list_.hit(lx,ly);if(picked>=0){map_list_.sel=picked;map_ix_=picked;ra2engine::lobby_apply_max_players(st_,map_max());}return;
+        const int picked=map_list_.hit(lx,ly);
+        if(picked>=0) {
+            map_list_.sel=picked;
+            map_ix_=map_index_at_list(picked);
+            ra2engine::lobby_apply_max_players(st_,map_max());
+        }
+        return;
     }
     if (mode_ == MODE_CUSTOMIZE) {
         if (map_list_.scrolls() && map_list_.strip_up().contains(lx, ly)) { map_list_.scroll(-map_list_.visible); return; }

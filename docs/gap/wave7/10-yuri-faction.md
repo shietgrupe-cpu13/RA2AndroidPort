@@ -38,7 +38,8 @@
 **Totals:** 13 gaps.
 - 2 MAJOR, both reachable: W7-10-01 (SOV11) and W7-10-02 (SOV09, needs a decision).
 - 6 MINOR, reachable: 03, 04, 05, 06, 08, 09.
-- 5 MINOR, not reachable: 07, 10, 11, 12, 13.
+- 1 MINOR, partial: 11.
+- 4 MINOR, not reachable: 07, 10, 12, 13.
 
 **Top items:**
 1. **W7-10-01.** Units that enemy (AI) Yuris capture just stand and guard. The original runs `DecideUnitFate` (TeamType MindControlDecision, otherwise a random pick among Add To Team / Grinder / Bio Reactor / Hunt, falling back to **Hunt**). In SOV11 the player's mind-controlled tanks should turn and hunt the player [CONFIRMED-RE 0x4722E0, CONFIRMED-PLAY s11].
@@ -70,7 +71,7 @@
 | DISK | DiskLaser; DiskDrain DrainWeapon (power, or money every 30 frames, 30 credits; 0x70F170 / 0x6F9697) | no drain (0 refs to `DrainWeapon`) | NOT REACHABLE (11) |
 | BSUB | Underwater; BoomerTorpedo; CruiseLauncher Spawns CMISL x2 | generic spawner path (not exercised) | NOT REACHABLE |
 | YAPSYT | MultipleMindControlTower Damage 3 (capacity 3) | not modelled | NOT REACHABLE |
-| YAGNTC / YAPPET | GeneticConverter (MutateWarhead full damage to infantry → InfantryMutate anim → Brute, 0x6CBA10 / 0x517DB5); Dominator (DamageArea, then permanent capture within DominatorCaptureRange, 0x53ADB0) | SW enum entries only; `rp_classic_sw_type` drops YR SW types | NOT REACHABLE (11) |
+| YAGNTC / YAPPET | GeneticConverter (MutateWarhead full damage to infantry → InfantryMutate anim → Brute, 0x6CBA10 / 0x517DB5); Dominator (DamageArea, then permanent capture within DominatorCaptureRange, 0x53ADB0) | Both powers are registered; Dominator captures psionic-eligible enemies in its area, and Genetic Converter replaces enemy infantry with Brutes. Exact damage, capture range, and presentation remain incomplete. | PARTIAL (11) |
 
 ## 3. Gaps
 
@@ -204,9 +205,9 @@
 - **Cause:** voxel and art loading is driven by the roster and the map's preload list, and these types are in neither.
 - **Fix:** load art on demand when a new type is created (a trigger/team create of any unlisted vehicle would hit the same path).
 
-### W7-10-11: Yuri special mechanics are not modelled (not reachable)
+### W7-10-11: Yuri special mechanics are only partially modelled
 - **Severity / effort:** MINOR, not reachable / L in total
-- **Evidence:** 0 engine refs to `IsGattling`, `Enslaves`, `IsLocomotor`, `IsMagBeam`, `Psychedelic`, `DrainWeapon`, `InfiniteMindControl`, `Mutate*`. PsychicDominator and GeneticConverter exist only as `SuperweaponType` values (`rp_classic_sw_type` drops them).
+- **Evidence:** Several unit mechanics remain unimplemented (`IsGattling`, `Enslaves`, `IsLocomotor`, `IsMagBeam`, `Psychedelic`, `DrainWeapon`, `InfiniteMindControl`). Psychic Dominator and Genetic Converter now have basic skirmish effects, but their full rules-driven damage, range, and presentation are not yet matched.
 - **Original, for whenever the scope grows** (each [CONFIRMED-RE], see §2):
   - **Gattling stages:** 0x70D2A0 / 0x70D430 / 0x6F2890.
   - **SlaveManager:** 0x6AE830; release to the killer's house at 0x6B0170.

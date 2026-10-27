@@ -23,7 +23,8 @@ namespace ra2engine {
 
 // [rules.ini comment block above [E1], classic RA2]
 //   NavalTargeting: 0 UNDERWATER_NEVER, 1 UNDERWATER_SECONDARY, 2 UNDERWATER_ONLY,
-//                   3 ORGANIC_SECONDARY, 4 SEAL_SPECIAL, 5 NAVAL_ALL, 6 NAVAL_NONE
+//                   3 ORGANIC_SECONDARY, 4 SEAL_SPECIAL, 5 NAVAL_ALL, 6 NAVAL_NONE,
+//                   7 Boomer: primary torpedo on water; LandTargeting selects launcher.
 //   LandTargeting:  0 LAND_OKAY, 1 LAND_NOT_OKAY   ("Defaults are 0's")
 enum : int {
     kNavUnderwaterNever = 0,
@@ -33,6 +34,7 @@ enum : int {
     kNavSealSpecial = 4,
     kNavNavalAll = 5,
     kNavNavalNone = 6,
+    kNavBoomer = 7,
 };
 
 struct AnType {

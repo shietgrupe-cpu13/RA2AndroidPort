@@ -628,6 +628,31 @@ TEST_CASE("projectile world: building target takes the hit only at detonation") 
     CHECK(r.world.buildings()[b].hp == 1000 - 90);
 }
 
+TEST_CASE("projectile world: Yuri Prime captures a building on projectile impact") {
+    ra2engine::Selection tsel_;
+    Rig r;
+    r.world.enable_projectiles(ProjectileRules{});
+    ra2engine::UnitCombat prime = cannon_stats();
+    prime.damage = 0;
+    prime.verses.assign(11, 0);
+    ra2engine::Unit& controller = r.world.add_combat_unit(0, 0, 0, prime);
+    controller.tg.t.rules_id = "YURIPR";
+    const int b = r.world.add_building(0, 5, 0, 2, 2, 1, 1000, 0, 0.0, true);
+    tsel_.set(0);
+    r.world.group_attack_building(0, tsel_.ids(), b);
+
+    int launch_step = -1;
+    for (int step = 1; step <= 60 && r.world.buildings()[b].house != 0; ++step) {
+        r.world.step(1.0 / 15.0);
+        for (const ProjectileEvent& e : r.world.take_projectile_events())
+            if (e.kind == ProjectileEvent::Launch && launch_step < 0) launch_step = step;
+    }
+
+    REQUIRE(launch_step > 0);
+    CHECK(r.world.buildings()[b].house == 0);
+    CHECK(r.world.buildings()[b].hp == 1000);
+}
+
 TEST_CASE("projectile world: scattered (Inaccurate+FlakScatter) launches are deterministic") {
     auto run = [] {
         Rig r;

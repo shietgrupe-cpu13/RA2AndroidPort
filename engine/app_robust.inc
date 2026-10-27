@@ -48,6 +48,12 @@ void game_logical_size(int& out_w, int& out_h) {
 #endif
     const int lw = static_cast<int>(std::lround(static_cast<double>(lh) * w / h)) & ~1;
     out_h = lh;
+    if (const char* ws = std::getenv("RA2_WIDESCREEN")) {
+        if (ws[0] == '0') {
+            out_w = lh * 16 / 9;
+            return;
+        }
+    }
     out_w = std::max(lh * 16 / 9, std::min(lh * 239 / 100, lw));
 }
 bool g_interactive_session = false;   // run_menu: fatal errors also get a message box

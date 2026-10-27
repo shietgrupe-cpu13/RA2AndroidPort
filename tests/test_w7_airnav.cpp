@@ -51,12 +51,13 @@ TEST_CASE("w7airnav W7-06-02/09: NavalTargeting switch FUN_006F2D80 on a Water/B
     CHECK(an_naval_slot(aegis, 0, false, false, false, false, false, false, /*airborne*/ true, false) == 0);
 
     AnType boomer; // Stock BSUB: NavalTargeting=7, LandTargeting=2.
-    boomer.naval_targeting=7;boomer.land_targeting=2;
+    boomer.naval_targeting=kNavBoomer;boomer.land_targeting=2;
     for(bool building : {false,true}) {
         CHECK(an_naval_slot(boomer,0,true,false,false,false,false,false,false,building)==1);
         CHECK(an_naval_slot(boomer,1,true,true,false,false,false,false,false,building)==0);
         CHECK(an_naval_slot(boomer,0,false,false,false,false,false,false,false,building)==-1);
     }
+    CHECK(an_naval_slot(boomer,1,true,true,false,false,false,false,false,false)==0);
     CHECK(an_naval_slot(boomer,0,true,false,false,false,false,false,true,false)==0);
 }
 

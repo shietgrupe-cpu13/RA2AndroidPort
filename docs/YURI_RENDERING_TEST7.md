@@ -13,6 +13,10 @@ incorrect or incomplete; radar has black pixels in explored areas.
   successfully resolved part logs its rules type, image name and source archive
   under `[vehicle-art]`. This addresses duplicate-name shadowing; it does not
   prove that duplicate files caused the tester's particular wrong model.
+- Vehicle loads that reuse a parsed scenario `Rules` object now read `Owner`
+  from that same object when selecting YR art. They no longer consult an empty
+  temporary INI and accidentally choose classic artwork for Yuri units such as
+  the Lasher.
 - `engine/pres_radar.inc`: unexplored cells leave the cleared radar image alone.
   Previously their black rectangles could overwrite explored cells sharing the
   same pixel when the map was reduced to radar size. Unexplored-only pixels

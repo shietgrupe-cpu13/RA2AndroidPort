@@ -93,6 +93,45 @@ gives the **640x480 shell canvas**, the same canvas and conversion used by
 - At the clone's 1280x720 logical window: s=1.5, offset (160,0).
 - At 800x600: s=1.25, offset (0,0).
 
+The Skirmish page keeps this uniform, centred fit on canvases at or narrower
+than 4:3. On wider landscape canvases it expands horizontally to fill the
+available width while retaining the vertical fit, with the pointer transform
+using the same independent X/Y scales. Its map-list header opens a dropdown
+with All, Custom, and Official maps; this is a view filter only and does not
+change the selected map unless the player picks another entry. The search field
+below the map list filters the visible display names case-insensitively while
+retaining the selected map and preview; Enter or Escape leaves text entry, and
+Backspace edits the query. The existing per-row AI dropdowns continue to select
+None, Easy, Medium, or Brutal opponents.
+
+### Reference sources and licensing
+
+The layout is an original implementation informed by the CnCNet Yuri's Revenge
+launcher; it does not copy its source code, logos, or artwork. The source-code
+licenses checked for the references are:
+
+- [CnCNet XNA client](https://github.com/CnCNet/xna-cncnet-client): repository
+  includes a GPL-3.0 license.
+- [VERA20K](https://github.com/YuriPlanet/vera20k): renderer repository includes
+  `LICENSE-GPL` (GPL-3.0).
+- [redalert2-recomp](https://github.com/sp00nznet/redalert2-recomp): its own
+  repository code is MIT-licensed ([LICENSE](https://github.com/sp00nznet/redalert2-recomp/blob/main/LICENSE));
+  its [notice](https://github.com/sp00nznet/redalert2-recomp/blob/main/NOTICE.md)
+  explicitly excludes EA game assets and lifted code from that grant. It is a
+  static recompilation of the shipping binaries, not a clean-room engine like
+  this project. Its [presenter](https://github.com/sp00nznet/redalert2-recomp/blob/main/docs/presenter.md),
+  [high-resolution handling](https://github.com/sp00nznet/redalert2-recomp/blob/main/docs/hires.md),
+  and [HD voxel renderer](https://github.com/sp00nznet/redalert2-recomp/blob/main/docs/voxels.md)
+  are useful design references; no code or assets were copied.
+- [CnCNet Yuri's Revenge client package](https://github.com/CnCNet/cncnet-yr-client-package):
+  no root license was confirmed during review. Do not infer that bundled game
+  assets, launcher artwork, or trademarks are covered by the XNA client's
+  source-code license.
+
+Those references do not establish rights to use Electronic Arts game assets or
+CnCNet branding. This project may read assets from the user's local game
+installation; it does not bundle or reproduce the reference artwork.
+
 RA2-classic's own runtime relayout at 800x600 is not recovered (open question Q1).
 The **YR template is natively 800x600** (533x369 DLU); its rects are in §1.6.
 
@@ -215,6 +254,10 @@ Orange, Sky, Purple, Pink). On first run, defaults come from
 - Button and checkbox clicks play `GUIMainButtonSound` / `GUICheckboxSound` =
   `MenuClick`; combo open/close plays `MenuACBOpen` / `MenuACBClose`; trackbars tick
   (rulesmd `[AudioVisual]`).
+- Navigation between shell pages plays `GUIMoveOutSound` / `GUIMoveInSound`
+  (`MenuSlideOut` / `MenuSlideIn`); the same sounds play when entering or
+  leaving Skirmish setup. Their stereo BAG samples are downmixed per frame for
+  the mono SFX mixer, preserving their original pitch and configured volume.
 - Page enter/leave runs the staggered SDBTNANM row power-on (frames 5-10 in, 11-16
   out, 30 ms/frame, `FUN_005E5150`; `mainmenu_true.md` §7.2).
 - The shell theme `grinder` keeps looping.

@@ -2,12 +2,12 @@
 <project version="4">
   <component name="deploymentTargetSelector">
     <selectionStates>
-      <SelectionState runConfigName="app">
+      <SelectionState runConfigName="RA2 Phone">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-10-23T14:46:37.901858200Z">
+        <DropdownSelection timestamp="2026-10-27T08:40:34.394414300Z">
           <Target type="DEFAULT_BOOT">
             <handle>
-              <DeviceId pluginId="Wireless" identifier="serviceName=adb-PVIJX4R4TGN7AIRS-QxxMVT" />
+              <DeviceId pluginId="LocalEmulator" identifier="path=C:\Users\justi\.android\avd\Pixel_8_Pro.avd" />
             </handle>
           </Target>
         </DropdownSelection>

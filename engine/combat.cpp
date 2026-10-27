@@ -43,6 +43,17 @@ std::string to_lower(const std::string& s) {
     return out;
 }
 
+void face_infantry_toward(Unit& u, double x, double y) {
+    if (!u.is_infantry || u.is_vehicle) return;
+    const int facing = facing_from_delta(x - u.fx, y - u.fy);
+    if (facing >= 0) u.facing = facing;
+}
+
+bool attack_move_can_fire_while_moving(const Unit& u) {
+    return u.tg.t.opportunity_fire ||
+           (u.is_vehicle && !u.is_aircraft && !u.is_naval && u.w7.t.has_turret);
+}
+
 // Euclidean distance in leptons between two cell-space (fx,fy) points.
 // docs/re/combat.md §6 (High): CONFIRMED Euclidean -- but the game's
 // distance is full 3D (lepton Z included, `Δx²+Δy²+Δz²`); our sim carries no
@@ -161,6 +172,7 @@ int area_guard_leash_cells(const Unit& u) {
 void try_fire(const World& world, std::vector<Unit>& units, std::vector<Building>& buildings,
               Unit& u, Unit& v, int attacker_idx, int victim_idx, Occupancy& occ,
               std::vector<ProjectileLaunch>* launches, ProjRng* rng) {
+    face_infantry_toward(u, v.fx, v.fy);
     u.rearm_frames = unit_rearm_frames(u, rng);   // W6-04-01 Burst
     u.fire_flash = kFireFlashSecs;
     if(world.chaos_weapon(u)) {
@@ -342,8 +354,8 @@ namespace {
 template <class BucketOf>
 bool w7_greatest_threat(const World& world, std::vector<Unit>& units, std::vector<Building>& buildings, Unit& u,
                         int i, bool in_range_only, const std::vector<std::vector<int>>& buckets, int bgw, int bgh,
-                        BucketOf bucket_of) {
-    const double acq = acquire_radius(u);
+                        BucketOf bucket_of, double scan_range) {
+    const double acq = scan_range > 0.0 ? scan_range : acquire_radius(u);
     const double rmax = std::max(std::max(slot_range(u, 0), slot_range(u, 1)), acq) + 1.0;
     struct Cand { double d; int score; int unit; int bld; };
     std::vector<Cand> cands;
@@ -1257,8 +1269,9 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
                 if(world.disc_drain_order(u,b_idx))continue;
                 // Gap fix C: the slot that can hit this structure's armor (a
                 // pure-AA weapon or a 0 % Verses warhead cannot) [weapons.md §2].
-                const int ws = unit_weapon_for_building(u, b->armor_ix, b->bomb_frame >= 0,
-                                                        world.an_victim_naval_cell(b->cx + b->fw / 2, b->cy + b->fh / 2));   // W7-06-02
+                int ws = unit_weapon_for_building(u, b->armor_ix, b->bomb_frame >= 0,
+                                                 world.an_victim_naval_cell(b->cx + b->fw / 2, b->cy + b->fh / 2));   // W7-06-02
+                if (ws < 0 && u.tg.t.rules_id == "YURIPR") ws = 0;
                 if (ws < 0 && !u.abil.c4 && u.abil.fire_kind == AbilityKind::None) {
                     u.target_building = -1;
                     u.attack_order = false;
@@ -1313,6 +1326,9 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
                 if (b_in_range && b_too_close) continue;
                 if (b_in_range) {
                     if (u.rearm_frames <= 0) {
+                        if (u.tg.mission == 29 && u.moving() && !attack_move_can_fire_while_moving(u))
+                            continue;
+                        face_infantry_toward(u, static_cast<double>(nx), static_cast<double>(ny));
                         // Aim gate, mirroring the unit path exactly
                         // (combat.cpp ~L276-278): a vehicle holds fire until
                         // its turret has slewed onto the nearest foundation
@@ -1345,7 +1361,7 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
                         // World::step_projectiles; otherwise the pre-P2 tail.
                         if (launches && u.w_proj.flies())
                             launches->push_back({i, -1, b_idx});
-                        else {
+                        else if (u.w_active != 0 || u.tg.t.rules_id != "YURIPR") {
                             // W5-B R-060: the shot detonates at the building's
                             // centre through the area applicator.
                             int ax, ay, az;
@@ -1512,6 +1528,10 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
             if (weapon_in_range(world, u, u.attack_cell_x * 256, u.attack_cell_y * 256,
                                 world.cell_level(u.attack_cell_x, u.attack_cell_y) * 104)) {
                 if (u.rearm_frames <= 0) {
+                    if (u.tg.mission == 29 && u.moving() && !attack_move_can_fire_while_moving(u))
+                        continue;
+                    face_infantry_toward(u, static_cast<double>(u.attack_cell_x),
+                                         static_cast<double>(u.attack_cell_y));
                     if (u.is_vehicle && !u.omni_fire && !u.w6.omni_fire &&
                         !vehicle_aimed(u, facing_u16_from_delta(
                                               static_cast<double>(u.attack_cell_x) - u.fx,
@@ -1571,12 +1591,22 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
             // target out of weapon range (GetFireError RANGE) is dropped and
             // the unit rescans from its CURRENT cell -- no anchor, no walk back.
             // W7-07-11 [RE: 0x4D5636..0x4D5660]: a Sticky unit drops it too.
+            // Attack-move keeps a target while it remains visible and within
+            // sight, so it can close into weapon range before resuming.
             if (u.target != -1 && !u.attack_order && u.tg.scan_timer <= 0 &&
                 (mission == 5 || mission == 2 || mission == 10 || mission == 6 || mission == 29 ||
-                 u.tg.opportunity) &&
-                !unit_in_weapon_range(world, u, units[u.target])) {
-                u.target = -1;
-                u.tg.opportunity = false;
+                 u.tg.opportunity)) {
+                const Unit& target = units[static_cast<std::size_t>(u.target)];
+                const bool outside_scan_range =
+                    mission == 29
+                        ? !target.seen_by_house(u.house) ||
+                              dist_leptons(u.fx, u.fy, target.fx, target.fy) >
+                                  std::max(acquire_radius(u), static_cast<double>(u.sight)) * kLeptonsPerCell
+                        : !unit_in_weapon_range(world, u, target);
+                if (outside_scan_range) {
+                    u.target = -1;
+                    u.tg.opportunity = false;
+                }
             }
             // (e) W7-07-02 [RE: TechnoClass::AI 0x6F9BC7 / FUN_00708710]: the
             // scan runs in Guard and Area Guard; in Move / Harvest only for an
@@ -1598,21 +1628,24 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
                     const World::CombatW7Rules& R = world.combat_w7();
                     u.tg.scan_timer = (mission == 11 ? R.guard_area_targeting_delay : R.normal_targeting_delay) +
                                       (rof_rng ? rof_rng->random(0, 2) : 0);
+                    const double scan_range =
+                        mission == 29 ? std::max(acquire_radius(u), static_cast<double>(u.sight))
+                                      : acquire_radius(u);
                     found = w7_greatest_threat(world, units, buildings, u, i, mission == 6,
-                                               buckets, bgw, bgh, bucket_of);
+                                               buckets, bgw, bgh, bucket_of, scan_range);
                     if (found) {
                         const bool on_move = u.moving();
                         u.attack_order = world.unit_berserk(i);
                         u.guard_x = u.cell_x;
                         u.guard_y = u.cell_y;
                         if (mission == 11) { u.tg.home_x = u.cell_x; u.tg.home_y = u.cell_y; }
-                        if (on_move && mission == 29) {
+                        if (on_move && mission == 29 && !attack_move_can_fire_while_moving(u)) {
                             // W7-07-12 [RE: FootClass FUN_004DEFF0]: an attack-
                             // moving unit stops to engage (finishing the cell it
                             // is entering) and resumes the move afterwards.
                             if (u.path_idx < u.path.size()) u.path.resize(u.path_idx + 1);
                         } else if (on_move) {
-                            u.tg.opportunity = true;   // W7-03-03: fire at will, keep driving
+                            u.tg.opportunity = true;   // keep the move while engaging
                         }
                     }
                 }
@@ -1860,6 +1893,8 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
         if (unit_in_weapon_range(world, u, v)) {   // W5-B R-063: 3-D + elevation + cliffs
             if (too_close) continue;
             if (u.rearm_frames <= 0) {
+                if (u.tg.mission == 29 && u.moving() && !attack_move_can_fire_while_moving(u))
+                    continue;
                 // Aim gate (docs/re/voxel-render.md §5, FireError::FACING): a
                 // vehicle holds fire until its turret has finished slewing onto
                 // the target (step_turrets ran this frame, before step_combat,

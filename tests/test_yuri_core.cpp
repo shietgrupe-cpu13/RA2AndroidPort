@@ -125,11 +125,13 @@ TEST_CASE("projectile presentation: reordered bullets, salvos and separate defen
     CHECK(m.sample(0,b,0)[0]==300);CHECK(m.sample(0,b,0.5)[0]==310);
 }
 
-TEST_CASE("presentation policy: repeated queue and rally speech has independent three-second windows") {
+TEST_CASE("presentation policy: repeated EVA speech has independent three-second windows") {
     SpeechCooldown gate;
     CHECK(gate.allow("building",0));CHECK_FALSE(gate.allow("building",1000));
     CHECK_FALSE(gate.allow("building",2999));CHECK(gate.allow("building",3000));
     CHECK(gate.allow("rally",3001));CHECK_FALSE(gate.allow("rally",4000));
+    CHECK(gate.allow("EVA_Repairing",4000));CHECK_FALSE(gate.allow("EVA_Repairing",5000));
+    CHECK(gate.allow("EVA_Repairing",7000));
     CHECK(gate.allow("training",4000));gate.clear();CHECK(gate.allow("rally",4000));
 }
 TEST_CASE("presentation policy: nuclear visual follows existing up and down strike phases") {
@@ -207,6 +209,69 @@ TEST_CASE("missile launchers: explicit V3 and Boomer land orders launch spawned 
         REQUIRE(w.units().size()>=3);
         CHECK(w.units()[0].w_active==(boomer ? 1 : 0));
         CHECK(w.units()[2].an.t.missile);CHECK(w.units()[2].an.owner==0);
+    }
+}
+TEST_CASE("Boomer: water targets use torpedoes and moving cancels pending land launches") {
+    auto make_rocket = [](World& w) {
+        auto rocket = unit("CMISL");
+        rocket.is_aircraft = rocket.is_vehicle = true;
+        rocket.an.spawned = rocket.an.missile = true;
+        rocket.an.rocket_kind = 2;
+        rocket.an.rocket_speed = 38;
+        w.register_an_type(rocket.image, rocket);
+    };
+    auto make_launcher = [] {
+        auto launcher = unit("BSUB");
+        launcher.is_vehicle = true;
+        launcher.damage = 1;
+        launcher.range = 18;
+        launcher.rof = 150;
+        launcher.omni_fire = true;
+        launcher.an.naval_targeting = kNavBoomer;
+        launcher.an.land_targeting = 2;
+        launcher.an.spawner_slot = 1;
+        launcher.an.spawns = "CMISL";
+        launcher.an.spawns_number = 2;
+        launcher.an.spawner_range = 20;
+        launcher.an.spawn_regen_frames = 400;
+        launcher.an.no_passive_acquire = true;
+        launcher.secondary.valid = true;
+        launcher.secondary.damage = 25;
+        launcher.secondary.range = 20;
+        launcher.secondary.rof = 50;
+        launcher.secondary.verses.assign(11, 100);
+        launcher.secondary.omni_fire = true;
+        return launcher;
+    };
+
+    {
+        Rig r; World w(r.map); make_rocket(w);
+        w.add_combat_unit(2, 2, 0, make_launcher());
+        auto target = unit("TARGET");
+        target.is_naval = true;
+        w.add_combat_unit(14, 2, 1, target);
+        w.units()[1].an.in_water = true;
+        CHECK(unit_weapon_for_unit(w.units()[0], w.units()[1]) == 0);
+        w.group_attack(0, {0}, 1);
+        for (int f = 0; f < 60; ++f) w.step(1.0 / 15.0);
+        CHECK(w.units()[0].w_active == 0);
+        CHECK(w.units().size() == 2);
+    }
+
+    {
+        Rig r; World w(r.map); make_rocket(w);
+        w.add_combat_unit(2, 2, 0, make_launcher());
+        auto target = unit("TARGET");
+        target.strength = 10000;
+        w.add_combat_unit(14, 2, 1, target);
+        w.group_attack(0, {0}, 1);
+        for (int f = 0; f < 40 && w.units().size() < 3; ++f) w.step(1.0 / 15.0);
+        REQUIRE(w.units().size() == 3);
+        w.group_move(0, {0}, 3, 10);
+        CHECK(w.units()[0].an.sp_tgt_unit == -1);
+        for (int f = 0; f < 60; ++f) w.step(1.0 / 15.0);
+        CHECK(w.units().size() == 3);
+        CHECK(w.units()[0].target == -1);
     }
 }
 TEST_CASE("Bunker presentation: approach offset has no foundation-edge jump") {
@@ -717,6 +782,38 @@ TEST_CASE("Yuri core: Psychic Reveal maps only its area and fog sight is tempora
     CHECK_FALSE(w.explored_at(0,0,0));CHECK_FALSE(w.explored_at(1,10,10));
     w.step(1.0/15.0);
     CHECK(w.explored_at(0,10,10));CHECK_FALSE(w.visible_at(0,10,10));
+}
+
+TEST_CASE("Yuri superweapons: Dominator captures units and Genetic Converter creates Brutes") {
+    Rig r;
+    std::array<int,11> verses{};verses.fill(100);
+    {
+        World w(r.map);
+        w.set_house(0,{World::Side::Soviet,0,"Player",0,true});
+        w.set_house(1,{World::Side::Allied,1,"Enemy",1,true});
+        auto target=unit("E1");target.is_infantry=true;
+        w.add_combat_unit(10,10,1,target);
+        w.grant_superweapon_type(0,SuperweaponType::PsychicDominator,0,false,0,3,0,verses);
+        w.step(1.0/15.0);
+        REQUIRE(w.fire_superweapon_at(0,SuperweaponType::PsychicDominator,10,10));
+        CHECK(w.units()[0].house==0);
+    }
+    {
+        World w(r.map);
+        w.set_house(0,{World::Side::Soviet,0,"Player",0,true});
+        w.set_house(1,{World::Side::Allied,1,"Enemy",1,true});
+        auto target=unit("E1");target.is_infantry=true;
+        w.add_combat_unit(10,10,1,target);
+        auto brute=unit("BRUTE");brute.is_infantry=true;
+        w.register_an_type("BRUTE",brute);
+        w.grant_superweapon_type(0,SuperweaponType::GeneticConverter,0,false,0,3,0,verses);
+        w.step(1.0/15.0);
+        REQUIRE(w.fire_superweapon_at(0,SuperweaponType::GeneticConverter,10,10));
+        REQUIRE(w.units().size()==2);
+        CHECK(w.units()[0].die_time>=0.0);
+        CHECK(w.units()[1].image=="BRUTE");
+        CHECK(w.units()[1].house==0);
+    }
 }
 
 TEST_CASE("Yuri core: miner packs without selling and reuses workers after redeploy") {

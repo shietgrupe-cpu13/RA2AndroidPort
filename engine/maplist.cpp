@@ -65,6 +65,29 @@ std::vector<MapEntry> build_map_catalog(const std::string& pkt_text,
     return out;
 }
 
+std::vector<int> map_catalog_indices(const std::vector<MapEntry>& entries, MapCatalogFilter filter) {
+    std::vector<int> indices;
+    for (int i = 0; i < static_cast<int>(entries.size()); ++i) {
+        const bool addon = entries[static_cast<std::size_t>(i)].addon;
+        if (filter == MapCatalogFilter::All ||
+            (filter == MapCatalogFilter::Addon && addon) ||
+            (filter == MapCatalogFilter::Standard && !addon))
+            indices.push_back(i);
+    }
+    return indices;
+}
+
+std::vector<int> map_catalog_search_indices(const std::vector<MapEntry>& entries,
+                                           MapCatalogFilter filter, const std::string& query) {
+    std::vector<int> indices = map_catalog_indices(entries, filter);
+    const std::string needle = lower(query);
+    if (needle.empty()) return indices;
+    indices.erase(std::remove_if(indices.begin(), indices.end(), [&](int i) {
+        return lower(entries[static_cast<std::size_t>(i)].display_name).find(needle) == std::string::npos;
+    }), indices.end());
+    return indices;
+}
+
 MapCatalog load_yr_map_catalog(const std::string& dir, const std::string& mode_tag) {
     // maps.md §1: the YR multiplayer maps live in multimd.mix; the manifest
     // (missionsmd.pkt) and the string table (ra2md.csf) live in langmd.mix.
@@ -184,7 +207,7 @@ MapEntry inspect_addon_map(const std::string& text,const std::string& token) {
     for(std::size_t i=0;i<starts.size();++i)
         if(starts[i].index!=static_cast<int>(i) || !map.at(starts[i].x,starts[i].y))
             throw std::runtime_error("invalid or noncontiguous player starts");
-    MapEntry e;e.file_name=token;e.base_name=token.substr(5);e.theater=theater;
+    MapEntry e;e.file_name=token;e.base_name=token.substr(5);e.theater=theater;e.addon=true;
     e.display_name=ini.get("Basic","Name",e.base_name);e.min_players=2;e.max_players=static_cast<int>(starts.size());
     std::string modes=lower(ini.get("Basic","GameMode","standard"));std::istringstream stream(modes);std::string mode;
     while(std::getline(stream,mode,',')) {

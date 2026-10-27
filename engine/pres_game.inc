@@ -631,8 +631,13 @@ private:
                     std::string list = pres_clean(rules_ini_->get(pres_upper(wh), "AnimList"));
                     const std::size_t comma = list.find(',');
                     if (comma != std::string::npos) list = pres_clean(list.substr(0, comma));
-                    const FxAnimType* ft=fx_.spawn(list,e.x,e.y,level_at(w,e.x,e.y),0.0);
-                    ra2engine::diag::note("NUKE_FX impact=%s available=%d",list.c_str(),ft!=nullptr);
+                    if (list.empty()) list = "NUKEANIM";
+                    const FxAnimType* ft = fx_.spawn(list, e.x, e.y, level_at(w, e.x, e.y), 0.0);
+                    if (!ft) {
+                        ft = fx_.spawn("NUKEANIM", e.x, e.y, level_at(w, e.x, e.y), 0.0);
+                        if (!ft) ft = fx_.spawn("EXPLOSM", e.x, e.y, level_at(w, e.x, e.y), 0.0);
+                    }
+                    ra2engine::diag::note("NUKE_FX impact=%s available=%d", list.c_str(), ft != nullptr);
                     if (ft)
                         snd_.play_at(ft->report, e.x, e.y, "nuke detonation");
                     pres_log(frame_, "fx superweapon " + list);
@@ -649,6 +654,20 @@ private:
                     } else if (t == T::LightningStorm) {
                         fx_.spawn(gen_s("WeatherConClouds"), e.x, e.y, level_at(w, e.x, e.y), 60.0);
                         snd_.eva("EVA_LightningStormCreated");
+                    } else if (t == T::PsychicDominator) {
+                        std::string a1 = gen_s("DominatorFirstAnim"); if (a1.empty()) a1 = "PDFXCLD";
+                        std::string a2 = gen_s("DominatorSecondAnim"); if (a2.empty()) a2 = "PDFXLOC";
+                        fx_.spawn(a1, e.x, e.y, level_at(w, e.x, e.y), 0.0);
+                        fx_.spawn(a2, e.x, e.y, level_at(w, e.x, e.y), 0.0);
+                        snd_.eva("EVA_PsychicDominatorActivated");
+                    } else if (t == T::GeneticConverter) {
+                        std::string a = gen_s("GeneticConverterInvokeAnim"); if (a.empty()) a = "GENDEATH";
+                        fx_.spawn(a, e.x, e.y, level_at(w, e.x, e.y), 0.0);
+                        snd_.eva("EVA_GeneticConverterActivated");
+                    } else if (t == T::PsychicReveal) {
+                        std::string a = gen_s("PsychicRevealInvokeAnim"); if (a.empty()) a = "PSYWAVE";
+                        fx_.spawn(a, e.x, e.y, level_at(w, e.x, e.y), 0.0);
+                        snd_.eva("EVA_PsychicRevealActivated");
                     }
                     pres_log(frame_, std::string("fx superweapon activated ") + ra2engine::superweapon_type_name(t));
                     break;
@@ -1761,7 +1780,7 @@ private:
                 order_voice(w, act, speaker, au, av);   // W5-E ClickedMission
             }
         }
-        if (act.repair_clicked) snd_.eva("EVA_Repairing");
+        if (act.repair_clicked) note_eva("EVA_Repairing");
         pump_voices();
     }
     // W7-12-25 [RE: QueueVoice 0x708210 stores techno+0x4F0; TechnoClass::AI

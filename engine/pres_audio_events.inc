@@ -100,7 +100,8 @@ public:
     // ---- GameScene notes -----------------------------------------------------
     // A UI-originated EVA line (cameo click / hotkey / mode), logged + queued.
     void note_eva(const std::string& name) {
-        const bool repeated=name=="EVA_Building" || name=="EVA_Training" || name=="EVA_NewRallyPointEstablished";
+        const bool repeated=name=="EVA_Building" || name=="EVA_Training" ||
+            name=="EVA_NewRallyPointEstablished" || name=="EVA_Repairing";
         if(repeated && !speech_cooldown_.allow(name,static_cast<std::uint64_t>(std::max(0.0,clock_)*1000.0)))return;
         snd_.eva(name);
     }

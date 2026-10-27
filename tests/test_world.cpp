@@ -3708,6 +3708,67 @@ TEST_CASE("World capture: capture_building flips ownership + resets primary [RE:
     CHECK_FALSE(world.capture_building(bi, 0, 0)); // no-op: already owned
 }
 
+TEST_CASE("World capture: Yuri Prime transfers a hostile building") {
+    ra2assets::MapFile map;
+    ra2engine::World world(map);
+    const int prime = static_cast<int>(world.units().size());
+    world.add_combat_unit(10, 10, 0, gi_stats());
+    world.units()[static_cast<std::size_t>(prime)].tg.t.rules_id = "YURIPR";
+    const int bi = world.add_building(0, 14, 10, 1, 1, 1, 100, 0, 0.0, true);
+
+    REQUIRE(bi >= 0);
+    CHECK(world.capture_building_with_unit(prime, bi, 0));
+    CHECK(world.buildings()[static_cast<std::size_t>(bi)].house == 0);
+    CHECK_FALSE(world.capture_building_with_unit(prime, bi, 0));
+}
+
+TEST_CASE("World capture: Yuri Prime's building weapon captures without damaging") {
+    ra2assets::MapFile map;
+    ra2engine::World world(map);
+    auto stats = gi_stats();
+    stats.damage = 0;
+    stats.range = 5.0;
+    stats.rof = 1;
+    stats.verses = {0};
+    const int prime = static_cast<int>(world.units().size());
+    world.add_combat_unit(10, 10, 0, stats);
+    world.units()[static_cast<std::size_t>(prime)].tg.t.rules_id = "YURIPR";
+    const int bi = world.add_building(0, 12, 10, 1, 1, 1, 100, 0, 0.0, true);
+    REQUIRE(bi >= 0);
+    const int hp = world.buildings()[static_cast<std::size_t>(bi)].hp;
+
+    world.group_attack_building(0, {prime}, bi);
+    for (int frame = 0; frame < 5 && world.buildings()[static_cast<std::size_t>(bi)].house != 0; ++frame)
+        world.step(1.0 / 15.0);
+
+    CHECK(world.buildings()[static_cast<std::size_t>(bi)].house == 0);
+    CHECK(world.buildings()[static_cast<std::size_t>(bi)].hp == hp);
+}
+
+TEST_CASE("World capture: AI sells engineer captures but keeps Unsellable buildings") {
+    ra2assets::MapFile map;
+    ra2engine::World world(map);
+    std::vector<ra2engine::BuildingTypeDef> roster(3);
+    roster[0].id = "GACNST";
+    roster[0].cost = 3000;
+    roster[0].strength = 1000;
+    roster[0].crewed = true;
+    roster[2].id = "CAOILD";
+    roster[2].unsellable = true;
+    world.set_building_types(std::move(roster));
+    world.enable_ai_house(0, ra2engine::AiHouseConfig{});
+    const int sellable = world.add_building(0, 5, 5, 5, 4, 1, 1000, 0, 3.6, true);
+    const int unsellable = world.add_building(2, 20, 5, 2, 2, 1, 1000, 0, 0.0, true);
+
+    REQUIRE(sellable >= 0);
+    REQUIRE(unsellable >= 0);
+    CHECK(world.capture_building(sellable, 0, 0));
+    CHECK(world.building_selling(sellable));
+    CHECK(world.capture_building(unsellable, 0, 0));
+    CHECK_FALSE(world.building_selling(unsellable));
+    CHECK(world.buildings()[static_cast<std::size_t>(unsellable)].house == 0);
+}
+
 TEST_CASE("World capture: repair_building heals an own damaged building [RE: capture.md §A5]") {
     ra2assets::MapFile map;
     if (!load_real_map_w(map)) { MESSAGE("skipped: no install"); return; }

@@ -55,6 +55,10 @@ Platform Platform::create(const char* title, int w, int h, bool hidden) {
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         throw std::runtime_error(SDL_GetError());
     }
+    // Keep SDL's queued draw-call batching enabled for the sprite-heavy game
+    // renderer. This is SDL's default, but setting it here prevents an
+    // environment hint from silently disabling the accelerated path.
+    SDL_SetHint(SDL_HINT_RENDER_BATCHING, "1");
 
     Uint32 flags = hidden ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN;
 #ifdef __ANDROID__
@@ -76,9 +80,25 @@ Platform Platform::create(const char* title, int w, int h, bool hidden) {
 
     // G0 --play: a hidden window renders through the software renderer so the
     // captured pixels do not depend on the GPU driver.
-    SDL_Renderer* renderer = SDL_CreateRenderer(
-        window, -1, hidden ? SDL_RENDERER_SOFTWARE : (SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC));   // W2-GA-P6 vsync (no tearing)
-    if (!renderer && !hidden) renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
+    SDL_Renderer* renderer = nullptr;
+    if (hidden) {
+        // G0 --play captures use software rendering so pixels do not depend on
+        // the GPU driver.
+        renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
+    } else {
+        renderer = SDL_CreateRenderer(
+            window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);  // W2-GA-P6
+        if (!renderer) {
+            // Some drivers support GPU rendering but reject the vsync flag.
+            // Try acceleration alone before giving up to software rendering.
+            SDL_ClearError();
+            renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+        }
+        if (!renderer) {
+            SDL_ClearError();
+            renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
+        }
+    }
     if (!renderer) {
         std::string err = SDL_GetError();
         SDL_DestroyWindow(window);

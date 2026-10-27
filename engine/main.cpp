@@ -858,6 +858,17 @@ ra2engine::MixerSound resolve_sound_event(AudioSystem& audio, const ra2assets::S
         }
         ra2assets::AudioClipInfo info;
         std::vector<int16_t> pcm = ra2assets::decode_bag_clip(bag.data(), bag.size(), *clip, info);
+        // The mixer bank is mono. The vanilla MenuSlide clips are stereo
+        // ADPCM, so collapse each L/R frame instead of treating alternating
+        // channels as consecutive mono samples (which halves their pitch).
+        if (info.channels == 2) {
+            std::vector<int16_t> mono;
+            mono.reserve(pcm.size() / 2);
+            for (std::size_t i = 0; i + 1 < pcm.size(); i += 2)
+                mono.push_back(static_cast<int16_t>(
+                    (static_cast<int>(pcm[i]) + static_cast<int>(pcm[i + 1])) / 2));
+            pcm = std::move(mono);
+        }
         ms.variants.push_back(audio.bank.add(std::move(pcm)));
     }
     ms.volume = e.volume;
@@ -1882,7 +1893,8 @@ VehicleAssets load_vehicle_assets(const std::string& dir, const ra2assets::MixFi
             // first, YR localmd.mix last) [RE: asset-search.md §1].
             {
                 std::vector<uint8_t> vr, hr;
-                const bool yuri_art = rules_ini.get(unit_id, "Owner").find("YuriCountry") != std::string::npos;
+                const bool yuri_art =
+                    rules.section_string(unit_id, "Owner", "").find("YuriCountry") != std::string::npos;
                 auto read_model = [&](const std::string& file, std::vector<uint8_t>& bytes) {
                     const MixFile* owner = nullptr;
                     std::string source;
@@ -3095,17 +3107,26 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
             }
     } catch (const std::exception&) {}
     std::cerr << "[sw] SW cameos loaded=" << ba.sw_cameos.size() << "\n";
-    try {
-        std::string name=rules.section_string("PsychicRevealSpecial","SidebarImage","psyricon");
-        if (name.find('.')==std::string::npos) name+=".shp";
-        const MixFile* owner=nullptr;std::string source;
-        if (const auto* entry=asset_fs().find(name,&owner,&source,false,true)) {
-            auto shp=ShpFile::load(owner->read(*entry));
-            if (shp.count()>0) ba.sw_cameos[static_cast<int>(ra2engine::SuperweaponType::PsychicReveal)]=std::move(shp);
-            ra2engine::diag::note("POWER_ART type=PsychicReveal file=%s source=%s",name.c_str(),source.c_str());
+    const std::pair<ra2engine::SuperweaponType, const char*> kYuriSwIcons[] = {
+        {ra2engine::SuperweaponType::PsychicDominator, "PsychicDominatorSpecial"},
+        {ra2engine::SuperweaponType::GeneticConverter, "GeneticConverterSpecial"},
+        {ra2engine::SuperweaponType::PsychicReveal, "PsychicRevealSpecial"}};
+    for (const auto& entry : kYuriSwIcons) {
+        try {
+            std::string name = rules.section_string(entry.second, "SidebarImage", "");
+            if (name.empty()) continue;
+            if (name.find('.') == std::string::npos) name += ".shp";
+            const MixFile* owner = nullptr;
+            std::string source;
+            if (const auto* art = asset_fs().find(name, &owner, &source, false, true)) {
+                auto shp = ShpFile::load(owner->read(*art));
+                if (shp.count() > 0) ba.sw_cameos[static_cast<int>(entry.first)] = std::move(shp);
+                ra2engine::diag::note("POWER_ART type=%s file=%s source=%s",
+                                      entry.second, name.c_str(), source.c_str());
+            }
+        } catch (const std::exception& error) {
+            ra2engine::diag::note("POWER_ART missing type=%s reason=%s", entry.second, error.what());
         }
-    } catch(const std::exception& error) {
-        ra2engine::diag::note("POWER_ART missing type=PsychicReveal reason=%s",error.what());
     }
 
     // Shared death explosion (TWLT070) from conquer.mix + anim.pal (guarded;
@@ -4232,16 +4253,21 @@ void draw_p5_chevrons(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2e
         // is Hidden (5): cloaked / submerged enemies], nor under shroud / fog.
         if (world.unit_hidden_from(g_local_house, u)) continue;
         if (u.house != g_local_house && !world.object_visible_at(g_local_house, u.cell_x, u.cell_y)) continue;
-        if (u.ia.vanish || pres_crushed(static_cast<int>(&u - world.units().data()))) continue;
+        const int idx = static_cast<int>(&u - world.units().data());
+        if (u.ia.vanish || pres_crushed(idx)) continue;
         const int rank = world.veterancy_enabled() ? ra2engine::vet_rank(u.vet.veterancy)
                                                    : (u.veteran_rank > 0 ? 1 : 0);
         if (rank <= 0) continue;
         const int frame = rank >= 2 ? 15 : 14;
-        const double ufx = u.fx + u.sub_x / 256.0, ufy = u.fy + u.sub_y / 256.0;   // W5-B sub-cell
+        const auto xy = g_unit_motion.position(idx, u, g_pres_render_fraction);
+        const double ufx = xy[0] + u.sub_x / 256.0, ufy = xy[1] + u.sub_y / 256.0;   // W5-B sub-cell
+        ra2engine::Unit draw_pose = u;
+        g_unit_motion.apply(idx, draw_pose, g_pres_render_fraction);
         // W7-12-20 [RE: 0x709E10 offsets from the same draw point as the
         // health bar]: lifted by the flight altitude and a bridge deck.
-        const int up = (u.is_aircraft && u.altitude > 0.0) ? ra2engine::altitude_to_screen_dy(u.altitude) : 0;
-        const int lv = u.level + pres_unit_lift_levels(world, u);
+        const int up = (u.is_aircraft && draw_pose.altitude > 0.0)
+            ? ra2engine::altitude_to_screen_dy(draw_pose.altitude) : 0;
+        const int lv = draw_pose.level + pres_unit_lift_levels(world, draw_pose);
         const int sx = static_cast<int>(std::lround((ufx - ufy) * 30.0)) + cam.x + 30;
         const int sy = static_cast<int>(std::lround((ufx + ufy) * 15.0 - lv * 15)) + cam.y + 15 - up;
         // W7-12-21: +(5,2) for InfantryClass only (the drone is a Unit).
@@ -4488,6 +4514,11 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
     if (g_fx) g_fx->draw(ren, tc, cam, W, H, 0);   // W3-B Flat / ground-layer anims under objects
     const std::vector<ra2engine::Unit>& us = world.units();
     auto usel = [&](const ra2engine::Unit& u) { return rsel.has(static_cast<int>(&u - us.data())); };
+    auto render_pose = [&](int idx, const ra2engine::Unit& u) {
+        ra2engine::Unit pose = u;
+        g_unit_motion.apply(idx, pose, g_pres_render_fraction);
+        return pose;
+    };
     // Hull sprite width for a vehicle unit (0 for infantry) -- sizes the
     // selection diamond + HP bar to the wider voxel sprite.
     auto veh_width = [&](const ra2engine::Unit& u) -> int {
@@ -4500,16 +4531,26 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
     // units entirely (no path, no selection marker for a corpse-in-progress).
     for (const ra2engine::Unit& u : us) {
         if (!u.alive || u.die_time >= 0.0 || u.cargo_of >= 0) continue;  // CB-1:
+        const int idx = static_cast<int>(&u - us.data());
         // G-88: in the real game only the player's SELECTED units show their
         // route, and only with RA2.INI "Target Lines" on (UnitActionLines);
         // the non-interactive render paths keep the old every-unit debug lines.
-        if (!input || (usel(u) && u.house == g_local_house && pres_target_lines()))
-            ra2engine::draw_path(ren, u, cam, W, H);   // carried units draw nothing
+        if (!input || (usel(u) && u.house == g_local_house && pres_target_lines())) {
+            if (g_unit_motion.moving(idx, u)) {
+                const auto pose = render_pose(idx, u);
+                ra2engine::draw_path(ren, pose, cam, W, H);
+            } else {
+                ra2engine::draw_path(ren, u, cam, W, H);
+            }
+        }   // carried units draw nothing
         // W2-UI-11: in the real game the selection marker IS the pip board
         // (drawn with the bars below); other render paths keep the diamond.
         if (usel(u) && !(input && g_pips)) {
-            auto marker_cam=cam;marker_cam.y+=int(std::lround((u.level-pres_ground_level(world,u))*15.0));
-            ra2engine::draw_selection(ren,u,marker_cam,W,H,veh_width(u));
+            const auto pose = render_pose(idx, u);
+            const double ground = g_unit_motion.ground_level(
+                idx, u, pres_ground_level(world, u), g_pres_render_fraction);
+            auto marker_cam=cam;marker_cam.y+=int(std::lround((pose.level-ground)*15.0));
+            ra2engine::draw_selection(ren,pose,marker_cam,W,H,veh_width(u));
         }
     }
     // Local waypoint preview, bounded by the planner's 64-node cap. It does
@@ -4889,7 +4930,10 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
     if (ba && g_map_dressing) {
         std::vector<DrawItem> air;
         for (int i : uorder)
-            if (pres_airborne(us[i])) air.push_back({us[i].fx + us[i].fy, 1, i});
+            if (pres_airborne(us[i])) {
+                const auto xy = g_unit_motion.position(i, us[i], g_pres_render_fraction);
+                air.push_back({xy[0] + xy[1], 1, i});
+            }
         std::stable_sort(air.begin(), air.end(), [](const DrawItem& x, const DrawItem& y) { return x.key < y.key; });
         for (const DrawItem& d : air) draw_one_unit(d.idx);
     }
@@ -4985,10 +5029,15 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
             const int idx = static_cast<int>(&u - us.data());
             const bool hovered = g_hover_unit == idx;   // W6-05-07
             if (usel(u) || hovered) {
-                const int up = (u.is_aircraft && u.altitude > 0.0) ? ra2engine::altitude_to_screen_dy(u.altitude) : 0;
-                const double ufx = u.fx + u.sub_x / 256.0, ufy = u.fy + u.sub_y / 256.0;   // W5-B
+                const auto xy = g_unit_motion.position(idx, u, g_pres_render_fraction);
+                const auto pose = render_pose(idx, u);
+                const int up = (u.is_aircraft && pose.altitude > 0.0)
+                    ? ra2engine::altitude_to_screen_dy(pose.altitude) : 0;
+                const double ufx = xy[0] + u.sub_x / 256.0, ufy = xy[1] + u.sub_y / 256.0;   // W5-B
                 const int sx = static_cast<int>(std::lround((ufx - ufy) * 30.0)) + cam.x + 30;
-                const double lv = (u.is_aircraft || u.is_naval) ? u.level+pres_unit_lift_levels(world,u) : pres_ground_level(world,u);
+                const double lv = (u.is_aircraft || u.is_naval)
+                    ? pose.level + pres_unit_lift_levels(world, pose)
+                    : g_unit_motion.ground_level(idx, u, pres_ground_level(world, u), g_pres_render_fraction);
                 const int sy = static_cast<int>(std::lround((ufx + ufy) * 15.0 - lv * 15)) + cam.y + 15 - up;
                 draw_unit_pips(ren, tc, u, sx, sy, g_pip_yellow, g_pip_red, usel(u));
                 // W7-12-04/05/16/17/18/22 [RE: DrawHealthBar 0x6F5A00 tail]: the
@@ -5001,10 +5050,16 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
                 }
             }
         } else {
-            if (usel(u) || u.hp < u.max_hp) ra2engine::draw_hp_bar(ren, u, cam, W, H, veh_width(u));
-            if (usel(u) && u.passengers_max > 0)
-                ra2engine::draw_cargo_pips(ren, u, ra2engine::cargo_total_size(us, u),
-                                           u.passengers_max, cam, W, H);
+            const int idx = static_cast<int>(&u - us.data());
+            const bool show_hp = usel(u) || u.hp < u.max_hp;
+            const bool show_cargo = usel(u) && u.passengers_max > 0;
+            if (show_hp || show_cargo) {
+                const auto pose = render_pose(idx, u);
+                if (show_hp) ra2engine::draw_hp_bar(ren, pose, cam, W, H, veh_width(u));
+                if (show_cargo)
+                    ra2engine::draw_cargo_pips(ren, pose, ra2engine::cargo_total_size(us, u),
+                                               u.passengers_max, cam, W, H);
+            }
         }
     }
     // W6-04-11 [rules [AudioVisual] IvanIconFlickerRate=8 "this many frames
@@ -6713,23 +6768,27 @@ struct ShellButton {
 struct ShellXform {
     double s = 1.0, ox = 0.0, oy = 0.0;
     bool large=false;
+    double sx = 0.0, sy = 0.0;
+    double scale_x() const { return sx > 0.0 ? sx : s; }
+    double scale_y() const { return sy > 0.0 ? sy : s; }
     static ShellXform make(int W, int H) {
         const int base_w=g_yuri_shell ? 800 : 640,base_h=g_yuri_shell ? 600 : 480;
         const double s = std::min(double(W)/base_w,double(H)/base_h);
         return { s, (W - base_w*s) / 2.0, (H - base_h*s) / 2.0,g_yuri_shell };
     }
     SDL_Rect native_dev(int lx, int ly, int lw, int lh) const {
-        return SDL_Rect{ static_cast<int>(std::lround(ox + lx * s)),
-                         static_cast<int>(std::lround(oy + ly * s)),
-                         static_cast<int>(std::lround(lw * s)),
-                         static_cast<int>(std::lround(lh * s)) };
+        return SDL_Rect{ static_cast<int>(std::lround(ox + lx * scale_x())),
+                         static_cast<int>(std::lround(oy + ly * scale_y())),
+                         static_cast<int>(std::lround(lw * scale_x())),
+                         static_cast<int>(std::lround(lh * scale_y())) };
     }
     SDL_Rect dev(int lx,int ly,int lw,int lh) const {
         const auto r=large ? ra2engine::yuri_shell_rect({lx,ly,lw,lh}) : ra2engine::SbRect{lx,ly,lw,lh};
         return native_dev(r.x,r.y,r.w,r.h);
     }
     std::pair<int,int> logical(int dx,int dy) const {
-        const int x=static_cast<int>(std::floor((dx-ox)/s)),y=static_cast<int>(std::floor((dy-oy)/s));
+        const int x=static_cast<int>(std::floor((dx-ox)/scale_x()));
+        const int y=static_cast<int>(std::floor((dy-oy)/scale_y()));
         return large ? ra2engine::yuri_shell_point(x,y) : std::make_pair(x,y);
     }
     ra2engine::SbRect hit(const ra2engine::SbRect& r) const {
@@ -8962,9 +9021,10 @@ std::unique_ptr<MenuAudio> load_menu_music(const std::string& dir) {
                 auto ib = audio_mix.read(*ie);
                 ra2assets::AudioIdx idx = ra2assets::AudioIdx::load(ib.data(), ib.size());
                 const std::vector<uint8_t> bag = audio_mix.read(*be);
-                const std::pair<const char*, const char*> keys[] = {
+                const std::pair<std::string, std::string> keys[] = {
                     {"menu:click", "MenuClick"}, {"menu:acbopen", "MenuACBOpen"},
-                    {"menu:acbclose", "MenuACBClose"}};
+                    {"menu:acbclose", "MenuACBClose"}, {"menu:slidein", "MenuSlideIn"},
+                    {"menu:slideout", "MenuSlideOut"}};
                 for (const auto& [k, ev] : keys) {
                     ra2engine::MixerSound s = resolve_sound_event(ma->sys, sounds, idx, bag, ev);
                     s.global = true;
@@ -9440,8 +9500,9 @@ bool command_menu_enabled() {
 class ShellScene : public Scene {
 public:
     ShellScene(const Rules& rules, bool no_audio, const MenuArt& art,
-               ShellPage page = PAGE_MAIN)
-        : rules_(rules), no_audio_(no_audio), art_(art), page_(page) {
+               ShellPage page = PAGE_MAIN, bool page_transition = false)
+        : rules_(rules), no_audio_(no_audio), art_(art), page_(page),
+          enter_sound_pending_(page_transition) {
         // [P8] Options page: seed the controls from the user's settings (or
         // the OptionsClass defaults when none are published, e.g. --menu-shot).
         if (page_ == PAGE_OPTIONS)
@@ -9615,6 +9676,7 @@ private:
     bool         no_audio_ = false;
     const MenuArt& art_;
     ShellPage    page_ = PAGE_MAIN;
+    bool enter_sound_pending_ = false;
     // [P8] Options page (dialog 0xD5) controls; unused on other pages.
     OptionsPageState opt_;
     CampaignPageState camp_;   // W2-UI-18 (PAGE_CAMPAIGN only)
@@ -9863,6 +9925,10 @@ void MainMenuScene::update(double dt) {
     // [P8] Dialog 0xD5 has no CRT movie control (options.md §1) -> no movie.
     if (page_ != PAGE_OPTIONS) bink_advance(dt);
     if (!art_.audio || !art_.audio->sys.enabled || !art_.audio->sys.mixer) return;
+    if (enter_sound_pending_) {
+        art_.audio->sys.mixer->play("menu:slidein");
+        enter_sound_pending_ = false;
+    }
     if (art_.audio->sys.mixer->active_voices() == 0)
         art_.audio->sys.mixer->play("menu:grinder");
     art_.audio->sys.out.pump(*art_.audio->sys.mixer);
@@ -10188,7 +10254,10 @@ void MainMenuScene::handle(const ra2engine::InputEvent& ev) {
                                 {gf_csf("GUI:OK", "OK"), gf_csf("GUI:Cancel", "Cancel")});
                 return;
             // The ONLY live game path: Skirmish -> setup -> GameScene (unchanged).
-            case ACT_SKIRMISH: next_ = new SkirmishSetupScene(rules_, no_audio_, art_); return;
+            case ACT_SKIRMISH:
+                if (audio_live()) art_.audio->sys.mixer->play("menu:slideout");
+                next_ = new SkirmishSetupScene(rules_, no_audio_, art_, true);
+                return;
             case ACT_MP_LAN: next_ = new MpLanScene(rules_, no_audio_, art_); return;
             case ACT_MP_ONLINE: next_ = new MpOnlineScene(rules_, no_audio_, art_); return;
             // P7 [RE: saveload.md §3]: STT:SingleButtonLoadSavedGame -> the Load dialog.
@@ -10233,10 +10302,11 @@ void MainMenuScene::handle(const ra2engine::InputEvent& ev) {
                 }
                 // W5-E2 (R-143): play the leave band first (FUN_00606980).
                 if (g_pres_play_log && !g_play_leave_band) {
-                    next_ = new ShellScene(rules_, no_audio_, art_, b.target);
+                    next_ = new ShellScene(rules_, no_audio_, art_, b.target, true);
                     return;
                 }
-                leave_next_ = new ShellScene(rules_, no_audio_, art_, b.target);
+                if (audio_live()) art_.audio->sys.mixer->play("menu:slideout");
+                leave_next_ = new ShellScene(rules_, no_audio_, art_, b.target, true);
                 leave_t_ = 0.0;
                 return;
             default:           return;

@@ -258,12 +258,9 @@ The order is refused by PreventAttackMove (+0x6C8). The unit scans while moving,
 
 [CONFIRMED-RE FUN_00708710 head] AI team members whose TeamType has Aggressive=yes (and not Suicide) also scan while moving. [CONFIRMED-DATA aimd.ini] 94 TeamTypes have Aggressive=yes and 32 have Suicide=yes.
 
-**Clone.** `command.hpp:95` declares `AttackMove = 29`, but nothing implements it and there is no input binding. There is no Aggressive or Suicide reader.
+**Clone.** Mission 29 and its input/order path are implemented. The attack-move scan was limited to the ordinary acquisition radius, and every moving unit stopped at the next cell even when it could fire while driving.
 
-**Fix.**
-- Implement attack-move plus its input bindings, and honour PreventAttackMove.
-- Carry Aggressive/Suicide onto team members.
-- Share the fire-on-the-move mechanism with W7-03-03.
+**Fix.** Attack-move scans visible units out to the mover's sight/acquisition radius and keeps the target while it remains visible within that radius, allowing it to approach before resuming the destination. Infantry stop and engage; ground vehicles and `OpportunityFire=yes` types keep their route and can fire while moving, subject to their normal weapon-facing gate. `PreventAttackMove` remains honored.
 
 #### W7-07-13 Force-fire on own or allied units is impossible or silently dropped (MAJOR)
 

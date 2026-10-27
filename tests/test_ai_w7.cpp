@@ -32,6 +32,15 @@ ra2engine::UnitCombat w7_gi(bool deployer) {
     return c;
 }
 
+ra2engine::UnitCombat attack_move_unit(bool vehicle) {
+    ra2engine::UnitCombat c = w7_gi(false);
+    c.is_vehicle = vehicle;
+    c.is_infantry = !vehicle;
+    c.range = 1.0;
+    c.sight = 6;
+    return c;
+}
+
 bool free_cell(const ra2engine::World& w, int x, int y) {
     return w.walkable(x, y) && w.unit_at_cell(x, y) < 0 && w.building_at_cell(x, y) < 0;
 }
@@ -57,6 +66,53 @@ void three_houses(ra2engine::World& world) {
 }
 
 }  // namespace
+
+TEST_CASE("W7 attack-move scans sight, pauses infantry, and lets tanks fire while driving") {
+    auto make_map = [] {
+        auto map = ra2assets::MapFile::parse("[Map]\nSize=0,0,20,20\nTheater=TEMPERATE\n");
+        auto& cells = const_cast<std::vector<ra2assets::MapCell>&>(map.cells());
+        for (int y = 0; y < 20; ++y)
+            for (int x = 0; x < 20; ++x) cells.push_back({x, y, 0, 0, 0});
+        return map;
+    };
+    auto arm = [](ra2engine::World& world) {
+        three_houses(world);
+        ra2engine::World::CombatW7Rules rules;
+        rules.armed = true;
+        rules.normal_targeting_delay = 0;
+        world.arm_combat_w7(rules);
+    };
+
+    auto infantry_map = make_map();
+    ra2engine::World infantry_world(infantry_map);
+    arm(infantry_world);
+    infantry_world.add_combat_unit(2, 2, 0, attack_move_unit(false));
+    auto target = w7_gi(false);
+    target.damage = 0;
+    target.sight = 0;
+    infantry_world.add_combat_unit(5, 2, 1, target);
+    infantry_world.group_attack_move(0, {0}, 14, 2);
+    const std::size_t infantry_route = infantry_world.units()[0].path.size();
+    REQUIRE(infantry_route > 1);
+    infantry_world.step(1.0 / 15.0);
+    CHECK(infantry_world.units()[0].target == 1);
+    CHECK_FALSE(infantry_world.units()[0].tg.opportunity);
+    CHECK(infantry_world.units()[0].path.size() < infantry_route);
+
+    auto tank_map = make_map();
+    ra2engine::World tank_world(tank_map);
+    arm(tank_world);
+    tank_world.add_combat_unit(2, 10, 0, attack_move_unit(true));
+    tank_world.add_combat_unit(5, 10, 1, target);
+    tank_world.group_attack_move(0, {0}, 14, 10);
+    const std::size_t tank_route = tank_world.units()[0].path.size();
+    REQUIRE(tank_route > 1);
+    tank_world.step(1.0 / 15.0);
+    CHECK(tank_world.units()[0].target == 1);
+    CHECK(tank_world.units()[0].tg.opportunity);
+    CHECK(tank_world.units()[0].path.size() == tank_route);
+    CHECK(tank_world.units()[0].fire_flash == 0.0);
+}
 
 // [RE: InfantryClass FUN_00521050 @0x52128C, rulesmd [General]
 // AIAutoDeployFrameDelay=15,25,100]: a computer house's GI standing in Guard

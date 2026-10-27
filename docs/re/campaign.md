@@ -296,3 +296,12 @@ briefing audio file in `mission.ini`.
 | MakeAlly/MakeEnemy are mutual | Execute `0x25/0x26` call both directions | **CONFIRMED** |
 | script action numbering | jump table `0x6E94E4` anchors | **CONFIRMED** at the anchors, PROBABLE (ModEnc) elsewhere |
 | team delivery, score layout | — | **[RE-FALLBACK]** |
+
+## §11 Portable campaign progress (engine behavior)
+
+After a won campaign mission with a next mission, the engine stores the next
+map, campaign side, and difficulty in the device-local `Saved Games/CAMPAIGN.PROGRESS`
+file. Android's launcher can import or export this small file through the
+Storage Access Framework. The startup resume page uses it if present; choosing
+to forget campaign progress removes it. Interrupted in-mission world state
+remains separate in `AUTOSAVE.SAV` and is not included in this transfer.
