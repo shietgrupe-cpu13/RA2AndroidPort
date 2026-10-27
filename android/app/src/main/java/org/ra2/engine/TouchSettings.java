@@ -15,6 +15,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -30,7 +31,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** Clean, neat touch control mapping and fullscreen free-placement drag editor. */
+/** Clean touch control mapping with professional layout presets and fullscreen free-placement editor. */
 final class TouchSettings {
 
     static class ActionItem {
@@ -86,11 +87,38 @@ final class TouchSettings {
         root.setPadding(dp16, dp16, dp16, dp16);
 
         TextView subtitle = new TextView(context);
-        subtitle.setText("Customize touch buttons, scale, opacity, or open the Fullscreen Touch Position Editor to drag buttons anywhere on screen.");
+        subtitle.setText("Choose professional control layout presets or open the Fullscreen Touch Position Editor to drag buttons anywhere.");
         subtitle.setTextSize(13);
         subtitle.setTextColor(Color.rgb(160, 182, 193));
         subtitle.setPadding(0, 0, 0, dp12);
         root.addView(subtitle);
+
+        // --- PRESET SELECTION SPINNER ---
+        TextView presetLabel = new TextView(context);
+        presetLabel.setText("CONTROL LAYOUT PRESETS:");
+        presetLabel.setTextSize(12);
+        presetLabel.setTextColor(Color.rgb(135, 163, 181));
+        root.addView(presetLabel);
+
+        Spinner presetSpinner = new Spinner(context);
+        String[] presets = {
+            "Classic Command Dock (Bottom-Left)",
+            "Thumb Comfort (Ergonomic Reach)",
+            "Tactical Commander (Extended)",
+            "Minimalist Combat Focus"
+        };
+        ArrayAdapter<String> presetAdapter = new ArrayAdapter<>(context, android.R.layout.simple_spinner_dropdown_item, presets);
+        presetSpinner.setAdapter(presetAdapter);
+        root.addView(presetSpinner);
+
+        presetSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                applyLayoutPreset(currentLayout, position);
+            }
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) { }
+        });
 
         // --- FULLSCREEN TOUCH POSITION EDITOR BUTTON ---
         Button fullscreenBtn = new Button(context);
@@ -99,7 +127,7 @@ final class TouchSettings {
         fullscreenBtn.setBackgroundColor(Color.rgb(224, 191, 115));
         fullscreenBtn.setOnClickListener(v -> showFullscreenMapper(context, currentLayout, p));
         LinearLayout.LayoutParams fsLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        fsLp.setMargins(0, dp8, 0, dp12);
+        fsLp.setMargins(0, dp12, 0, dp12);
         root.addView(fullscreenBtn, fsLp);
 
         // --- SCALE & OPACITY CONTROLS ---
@@ -163,74 +191,6 @@ final class TouchSettings {
         collapsedCheck.setTextColor(Color.rgb(220, 230, 237));
         root.addView(collapsedCheck);
 
-        // --- BUTTON MAPPING LIST ---
-        TextView mapHeader = new TextView(context);
-        mapHeader.setText("ACTIVE TOUCH BUTTONS & ORDER:");
-        mapHeader.setTextSize(12);
-        mapHeader.setTextColor(Color.rgb(135, 163, 181));
-        mapHeader.setPadding(0, dp12, 0, dp4(density));
-        root.addView(mapHeader);
-
-        LinearLayout listContainer = new LinearLayout(context);
-        listContainer.setOrientation(LinearLayout.VERTICAL);
-        root.addView(listContainer);
-
-        Runnable updateList = new Runnable() {
-            @Override
-            public void run() {
-                listContainer.removeAllViews();
-                for (int i = 0; i < currentLayout.size(); i++) {
-                    final int index = i;
-                    final ActionItem item = currentLayout.get(i);
-
-                    LinearLayout row = new LinearLayout(context);
-                    row.setOrientation(LinearLayout.HORIZONTAL);
-                    row.setGravity(Gravity.CENTER_VERTICAL);
-                    row.setPadding(dp8, dp4(density), dp8, dp4(density));
-
-                    CheckBox cb = new CheckBox(context);
-                    cb.setChecked(item.active);
-                    cb.setText(String.format(Locale.US, "%s [%s]", item.label, item.defaultHotkey));
-                    cb.setTextColor(item.active ? Color.rgb(240, 244, 248) : Color.rgb(120, 130, 140));
-                    cb.setOnCheckedChangeListener((buttonView, isChecked) -> item.active = isChecked);
-
-                    LinearLayout.LayoutParams cbLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-                    row.addView(cb, cbLp);
-
-                    Button upBtn = new Button(context);
-                    upBtn.setText("▲");
-                    upBtn.setTextSize(12);
-                    upBtn.setPadding(0, 0, 0, 0);
-                    upBtn.setEnabled(index > 0);
-                    upBtn.setOnClickListener(v -> {
-                        ActionItem prev = currentLayout.get(index - 1);
-                        currentLayout.set(index - 1, item);
-                        currentLayout.set(index, prev);
-                        run();
-                    });
-                    LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(dp36(density), dp36(density));
-                    row.addView(upBtn, btnLp);
-
-                    Button downBtn = new Button(context);
-                    downBtn.setText("▼");
-                    downBtn.setTextSize(12);
-                    downBtn.setPadding(0, 0, 0, 0);
-                    downBtn.setEnabled(index < currentLayout.size() - 1);
-                    downBtn.setOnClickListener(v -> {
-                        ActionItem next = currentLayout.get(index + 1);
-                        currentLayout.set(index + 1, item);
-                        currentLayout.set(index, next);
-                        run();
-                    });
-                    row.addView(downBtn, btnLp);
-
-                    listContainer.addView(row);
-                }
-            }
-        };
-
-        updateList.run();
-
         ScrollView scroll = new ScrollView(context);
         scroll.addView(root);
 
@@ -244,6 +204,47 @@ final class TouchSettings {
                 .setNeutralButton("Hotkey Guide", (dialog, which) -> guide(context))
                 .setNegativeButton("Cancel", null)
                 .show();
+    }
+
+    private static void applyLayoutPreset(List<ActionItem> layout, int presetIndex) {
+        List<String> activeIds = new ArrayList<>();
+        Map<String, float[]> customPos = new HashMap<>();
+
+        if (presetIndex == 0) { // Classic Command Dock
+            activeIds = Arrays.asList("STOP", "GUARD", "DEPLOY", "SCATTER", "FIRE", "MOVE", "ADD");
+            for (ActionItem a : layout) { a.xPct = -1f; a.yPct = -1f; }
+        } else if (presetIndex == 1) { // Thumb Comfort (Ergonomic arc)
+            activeIds = Arrays.asList("STOP", "GUARD", "DEPLOY", "SCATTER", "FIRE", "MOVE", "ADD");
+            customPos.put("STOP", new float[]{5f, 75f});
+            customPos.put("GUARD", new float[]{16f, 75f});
+            customPos.put("DEPLOY", new float[]{27f, 75f});
+            customPos.put("SCATTER", new float[]{5f, 88f});
+            customPos.put("FIRE", new float[]{78f, 88f});
+            customPos.put("MOVE", new float[]{89f, 88f});
+            customPos.put("ADD", new float[]{78f, 75f});
+        } else if (presetIndex == 2) { // Tactical Commander (Extended)
+            activeIds = Arrays.asList("STOP", "GUARD", "DEPLOY", "SCATTER", "FIRE", "MOVE", "ADD", "BOX", "ROUTE", "HOME");
+            for (ActionItem a : layout) { a.xPct = -1f; a.yPct = -1f; }
+        } else if (presetIndex == 3) { // Minimalist Combat Focus
+            activeIds = Arrays.asList("STOP", "GUARD", "MOVE", "FIRE", "SCATTER");
+            customPos.put("STOP", new float[]{5f, 82f});
+            customPos.put("GUARD", new float[]{16f, 82f});
+            customPos.put("MOVE", new float[]{78f, 82f});
+            customPos.put("FIRE", new float[]{89f, 82f});
+            customPos.put("SCATTER", new float[]{47f, 88f});
+        }
+
+        for (ActionItem item : layout) {
+            item.active = activeIds.contains(item.id);
+            float[] coords = customPos.get(item.id);
+            if (coords != null) {
+                item.xPct = coords[0];
+                item.yPct = coords[1];
+            } else if (presetIndex != 1 && presetIndex != 3) {
+                item.xPct = -1f;
+                item.yPct = -1f;
+            }
+        }
     }
 
     private static void savePreferences(SharedPreferences p, List<ActionItem> layout, int scale, int opacity, boolean collapsed) {
@@ -304,7 +305,7 @@ final class TouchSettings {
         btmBar.setBackgroundColor(Color.argb(220, 18, 24, 28));
 
         Button resetBtn = new Button(context);
-        resetBtn.setText("Reset Dock Positions");
+        resetBtn.setText("Reset to Default Dock");
         resetBtn.setOnClickListener(v -> {
             for (ActionItem item : layout) { item.xPct = -1f; item.yPct = -1f; }
             canvasView.invalidate();
@@ -330,11 +331,9 @@ final class TouchSettings {
         dialog.show();
     }
 
-    private static int dp4(float density) { return Math.round(4 * density); }
     private static int dp8(float density) { return Math.round(8 * density); }
     private static int dp12(float density) { return Math.round(12 * density); }
     private static int dp16(float density) { return Math.round(16 * density); }
-    private static int dp36(float density) { return Math.round(36 * density); }
 
     private static List<ActionItem> parseLayout(String savedMapping, String savedPositions, int mask) {
         List<ActionItem> list = new ArrayList<>();
