@@ -412,6 +412,7 @@ final class TouchSettings {
         FullscreenDragCanvas(Context context, List<ActionItem> layout) {
             super(context);
             this.layout = layout;
+            setWillNotDraw(false);
         }
 
         @Override

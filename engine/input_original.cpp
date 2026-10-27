@@ -674,6 +674,14 @@ bool Input::type_select() {
             std::find(types.begin(), types.end(), u.image) == types.end())
             types.push_back(u.image);
     }
+    if (types.empty()) {
+        for (const auto& u : us) {
+            if (world_.controllable(u.house) && u.alive && u.die_time < 0.0) {
+                types.push_back(u.image);
+                break;
+            }
+        }
+    }
     if (types.empty()) return false;
     auto matches = [&](const Unit& u) {
         return world_.controllable(u.house) && u.alive && u.die_time < 0.0 && u.cargo_of < 0 &&
