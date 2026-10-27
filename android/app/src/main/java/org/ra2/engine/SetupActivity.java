@@ -255,6 +255,7 @@ public class SetupActivity extends Activity {
 
         root.addView(label("SUPPORT & PREFERENCES",12,Color.rgb(135,163,181)));
         root.addView(button("Launcher theme",v->chooseTheme()));
+        root.addView(button("Touch controls & hotkeys",v->{if(!copying)TouchSettings.show(this);}));
         root.addView(button("Game main menu",v->{
             if(copying)return;
             new android.app.AlertDialog.Builder(this).setTitle("Game main menu")

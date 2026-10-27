@@ -62,7 +62,22 @@ static bool defuse_possible(const World& w, int eng, int unit_target, int b_targ
     return unit_target >= 0 || b_target >= 0;
 }
 
+void Input::toggle_planning() {
+    if(placement_active() || sw_targeting_ || mode_!=BaseMode::None)return;
+    planning_=!planning_;
+    if(planning_) {planned_moves_.clear();return;}
+    auto commands=std::move(planned_moves_);planned_moves_.clear();
+    for(auto& c:commands) {c.mission=Mission::QMove;emit(std::move(c));}
+}
+
 void Input::emit(Command c) {
+    if(planning_ && c.type==EventType::MegaMission && c.mission==Mission::Move && c.dest.is_cell()) {
+        if(planned_moves_.size()<64)planned_moves_.push_back(std::move(c));
+        return;
+    }
+    // An action/Stop supersedes an uncommitted route rather than leaving a
+    // hidden plan that can unexpectedly replace it on the next Z press.
+    if(planning_ && c.type!=EventType::SelectNotify) {planning_=false;planned_moves_.clear();}
     // NET L1: every order leaves Input as a Command. In the game the sink is
     // the scene's scheduler (applied at the next tick start); without one
     // (unit tests, tools) it is applied to the World at once.
@@ -192,6 +207,7 @@ void Input::resolve_ground_cell(int px, int py, int& cx, int& cy) const {
 }
 
 void Input::begin_placement(int roster_type, int fw, int fh) {
+    planning_=false;planned_moves_.clear();
     place_type_ = roster_type;
     place_fw_ = fw > 0 ? fw : 1;
     place_fh_ = fh > 0 ? fh : 1;
@@ -229,6 +245,7 @@ void Input::set_mode_(BaseMode want, int control) {
     // PLACEMENT WINS: every setter early-returns while PendingObject != 0.
     if (placement_active()) return;
     // Every setter clears the other modes.
+    planning_=false;planned_moves_.clear();
     sw_targeting_ = false;
     if (next == BaseMode::None) {
         mode_ = BaseMode::None;
@@ -259,7 +276,7 @@ bool Input::cancel_one_mode() {
     if (mode_ == BaseMode::Sell) { mode_ = BaseMode::None; return true; }
     if (mode_ == BaseMode::PowerToggle) { mode_ = BaseMode::None; return true; }   // W5-E2
     if (sw_targeting_) { sw_targeting_ = false; return true; }
-    // (PlanningMode, PlaceBeaconMode would sit here -- not modeled.)
+    if(planning_) {planning_=false;planned_moves_.clear();return true;}
     return false;
 }
 

@@ -5938,6 +5938,8 @@ void World::step(double dt) {
         for (int s : scatter) order_scatter(s, /*cell_push=*/true);
     }
 
+    step_waypoints();
+
     // P5 Crates [RE: veterancy.md C4/C5]: pickup by any unit now standing on a
     // crate cell, then lifetime expiry -> relocation. A pure INSERTION;
     // `if (!crates_any_) return;` inside is the only cost every existing gate

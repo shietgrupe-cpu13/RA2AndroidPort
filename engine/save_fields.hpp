@@ -18,6 +18,13 @@
 #include "world.hpp"
 
 namespace ra2engine {
+template<class Ar> void fields(Ar& ar,WaypointRoute& v) {
+    save::io(ar,v.house);save::io(ar,v.points);
+}
+template<class Ar> void fields(Ar& ar,SpawnLaunchProfile& v) {
+    save::io(ar,v.second);
+    save::io(ar,v.decloak);
+}
 template<class Ar> void fields(Ar& ar,DiskEvent& v) {
     save::io(ar,v.source);save::io(ar,v.target);save::io(ar,v.building);
     save::io(ar,v.cell_x);save::io(ar,v.cell_y);save::io(ar,v.phase);
@@ -352,19 +359,29 @@ struct SaveAccess {
         if constexpr(Ar::kLoading) {
             if(ar.at_end())w.drain_.links.clear();
             else save::io(ar,w.drain_);
-        } else if(w.drain_.enabled || w.chaos_.enabled || w.disk_.enabled)save::io(ar,w.drain_);
+        } else if(w.drain_.enabled || w.chaos_.enabled || w.disk_.enabled || !w.waypoint_routes_.empty() || !w.spawn_launch_profiles_.empty())save::io(ar,w.drain_);
         save::mark(ar,"drain_");
         // v57 adds the temporary status owner after the intact v55/v56 payload.
         if constexpr(Ar::kLoading) {
             if(ar.at_end()) {w.chaos_.active.clear();w.chaos_.pending.clear();}
             else save::io(ar,w.chaos_);
-        } else if(w.chaos_.enabled || w.disk_.enabled)save::io(ar,w.chaos_);
+        } else if(w.chaos_.enabled || w.disk_.enabled || !w.waypoint_routes_.empty() || !w.spawn_launch_profiles_.empty())save::io(ar,w.chaos_);
         save::mark(ar,"chaos_");
         if constexpr(Ar::kLoading) {
             if(ar.at_end()) {w.disk_.shots.clear();w.disk_.events.clear();}
             else save::io(ar,w.disk_);
-        } else if(w.disk_.enabled)save::io(ar,w.disk_);
+        } else if(w.disk_.enabled || !w.waypoint_routes_.empty() || !w.spawn_launch_profiles_.empty())save::io(ar,w.disk_);
         save::mark(ar,"disk_");
+        // v60 append-only tail. Empty extensions retain old inert-world hashes.
+        bool extension=false;
+        if constexpr(Ar::kLoading) {
+            extension=!ar.at_end();
+            if(!extension) {w.waypoint_routes_.clear();w.spawn_launch_profiles_.clear();}
+        } else extension=!w.waypoint_routes_.empty() || !w.spawn_launch_profiles_.empty();
+        if(extension)save::io(ar,w.waypoint_routes_);
+        save::mark(ar,"waypoint_routes_");
+        if(extension)save::io(ar,w.spawn_launch_profiles_);
+        save::mark(ar,"spawn_launch_profiles_");
     }
 
     // --- MapTriggerSystem: every member except d_ (the parsed map data, a

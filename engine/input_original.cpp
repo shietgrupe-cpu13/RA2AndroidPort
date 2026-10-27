@@ -519,6 +519,7 @@ void Input::right_click_cancel() {
 void Input::clear_cursor_modes() {
     mode_ = BaseMode::None;
     sw_targeting_ = false;
+    planning_=false;planned_moves_.clear();
 }
 
 void Input::handle_original(const InputEvent& ev) {

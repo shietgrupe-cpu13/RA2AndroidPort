@@ -17,7 +17,7 @@ void touch_metal(SDL_Renderer* ren,const SDL_Rect& r,ra2assets::Rgba c) const {
     SDL_RenderDrawLine(ren,r.x+1,r.y+r.h-2,r.x+r.w-2,r.y+r.h-2);
 }
 enum : int { TB_TOGGLE = 1, TB_ADD, TB_FIRE, TB_MOVE, TB_STOP, TB_GUARD, TB_SCATTER, TB_DEPLOY, TB_BRIEF,
-             TB_BOX, TB_MORE, TB_TYPE, TB_HOME, TB_EVENT, TB_NEXT, TB_PREV, TB_FOLLOW,
+             TB_BOX, TB_MORE, TB_TYPE, TB_HOME, TB_EVENT, TB_NEXT, TB_PREV, TB_FOLLOW, TB_ROUTE,
              TB_VIEW1 = 90, TB_GROUP1 = 100 };
 // Query live selection without issuing simulation orders.
 const char* touch_deploy_label() const {
@@ -119,7 +119,7 @@ void draw_touch_selection(SDL_Renderer* ren, ra2engine::TextureCache& tc) {
     touch_colour(ren,skin.accent);
     SDL_RenderDrawLine(ren,panel.x+1,panel.y+1,panel.x+panel.w-2,panel.y+1);
     const int first = input_.selection().lowest();
-    std::string title = "NO UNIT SELECTED";
+    std::string title = input_.planning_mode() ? "ROUTE Z: TAP POINTS" : "NO UNIT SELECTED";
     bool pictured = false;
     if (first >= 0 && first < static_cast<int>(world_.units().size())) {
         const auto& u = world_.units()[first]; title = u.image;
@@ -138,6 +138,7 @@ void draw_touch_selection(SDL_Renderer* ren, ra2engine::TextureCache& tc) {
         draw_text(ren,"UNIT",p.x+8,p.y+16,1,170,190,150);
     }
     // Leave the fold arrow clear even with a long rules id.
+    if(input_.planning_mode())title="ROUTE Z: "+std::to_string(input_.planned_moves())+" / TAP Z TO GO";
     title = title.substr(0,24);
     draw_text(ren,title,panel.x+66,panel.y+8,1,skin.text.r,skin.text.g,skin.text.b);
     int hp=0,maximum=0,count=0;
@@ -165,16 +166,23 @@ int touch_bar_top() const {
     return ra2engine::TouchBarLayout::top(kWinH, touch_btn_count());
 }
 const std::vector<TouchBtn>& touch_buttons() const {
-    static const std::vector<TouchBtn> all = {
-        {"STOP", TB_STOP}, {"GUARD", TB_GUARD}, {"DEPLOY", TB_DEPLOY}, {"SCATTER", TB_SCATTER},
-        {"FIRE", TB_FIRE}, {"ATK MOVE", TB_MOVE}, {"+SELECT", TB_ADD}, {"MORE", TB_MORE},
-        {"1", TB_GROUP1}, {"2", TB_GROUP1+1}, {"3", TB_GROUP1+2}, {"4", TB_GROUP1+3}, {"5", TB_GROUP1+4}};
+    static const std::vector<TouchBtn> all = [] {
+        int mask=127;
+        if(const char* v=std::getenv("RA2_TOUCH_ACTIONS"))mask=std::clamp(std::atoi(v),0,127);
+        const TouchBtn actions[]={{"STOP",TB_STOP},{"GUARD",TB_GUARD},{"DEPLOY",TB_DEPLOY},
+            {"SCATTER",TB_SCATTER},{"FIRE",TB_FIRE},{"ATK MOVE",TB_MOVE},{"+SELECT",TB_ADD}};
+        std::vector<TouchBtn> out;
+        for(int i=0;i<7;++i)if(mask&(1<<i))out.push_back(actions[i]);
+        out.push_back({"MORE",TB_MORE});
+        for(int i=0;i<5;++i)out.push_back({i==0?"1":i==1?"2":i==2?"3":i==3?"4":"5",TB_GROUP1+i});
+        return out;
+    }();
     // W6-01-09: page 2 -- the KeyboardMD.ini commands with no other touch path.
     static const std::vector<TouchBtn> more = {
         {"BACK", TB_TOGGLE}, {"TYPE", TB_TYPE}, {"HOME", TB_HOME}, {"EVT", TB_EVENT},
         {"NEXT", TB_NEXT}, {"PREV", TB_PREV}, {"FOLW", TB_FOLLOW}, {"6", TB_GROUP1 + 5},
         {"7", TB_GROUP1 + 6}, {"8", TB_GROUP1 + 7}, {"9", TB_GROUP1 + 8}, {"0", TB_GROUP1 + 9},
-        {"V1", TB_VIEW1}, {"V2", TB_VIEW1 + 1}, {"V3", TB_VIEW1 + 2}, {"BOX", TB_BOX}, {"BRF", TB_BRIEF}};
+        {"ROUTE Z", TB_ROUTE}, {"V1", TB_VIEW1}, {"V2", TB_VIEW1 + 1}, {"V3", TB_VIEW1 + 2}, {"BOX", TB_BOX}, {"BRF", TB_BRIEF}};
     if (touch_page2_) return more;
     return all;
 }
@@ -223,6 +231,7 @@ void touch_command(int id, bool long_press, uint32_t t_ms) {
             touch_move_ = !touch_move_; touch_fire_ = false;
             if (touch_move_) touch_box_ = false;
             one_shot = false; break;
+        case TB_ROUTE: input_.toggle_planning(); one_shot=false; break;
         case TB_STOP: input_.stop_selected(); break;
         case TB_GUARD: input_.guard_selected(); break;
         case TB_SCATTER: input_.scatter_selected(); break;
@@ -366,7 +375,7 @@ void draw_touch_bar(SDL_Renderer* ren, ra2engine::TextureCache& tc) {
         const bool on = (id == TB_ADD && touch_add_) || (id == TB_FIRE && touch_fire_) ||
                         (id == TB_MOVE && touch_move_) || (id == TB_TOGGLE && (touch_bar_open_ || armed_mod)) ||
                         (id == TB_BRIEF && show_briefing_) || (id == TB_BOX && touch_box_) ||
-                        (id == TB_MORE && touch_page2_);
+                        (id == TB_ROUTE && input_.planning_mode()) || (id == TB_MORE && touch_page2_);
         const auto skin=touch_skin();
         touch_metal(ren,r,on ? skin.active : skin.panel);
         touch_colour(ren,on ? skin.accent : skin.border);
@@ -403,4 +412,4 @@ bool touch_place_swallow_up_ = false;
 
 bool touch_panel_capture_ = false;
 
-bool touch_panel_collapsed_ = true; // Start unobtrusively; the arrow expands it.
+bool touch_panel_collapsed_ = !std::getenv("RA2_TOUCH_COLLAPSED") || std::string(std::getenv("RA2_TOUCH_COLLAPSED"))!="0"; // Start unobtrusively; the arrow expands it.

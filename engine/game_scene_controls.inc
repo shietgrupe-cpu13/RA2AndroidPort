@@ -230,6 +230,7 @@
         switch (b.cmd) {
             case C::None: return false;
             case C::Options: menu_.open(); return true;
+            case C::PlanningMode: input_.toggle_planning(); return true;
             case C::StopObject: input_.stop_selected(); return true;
             case C::GuardObject: input_.guard_selected(); return true;
             case C::ScatterObject: input_.scatter_selected(); return true;

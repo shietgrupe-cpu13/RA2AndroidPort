@@ -322,6 +322,9 @@
             p.set("touch_bar_open", !touch_panel_collapsed_ ? 1 : 0);
             p.set("touch_banner", touch_banner_visible() ? 1 : 0);
             p.set("touch_mode", touch_mode());
+            p.set("planning_mode",input_.planning_mode()?1:0);
+            p.set("planned_moves",static_cast<int>(input_.planned_moves()));
+            p.set("waypoint_routes",static_cast<int>(world_.waypoint_routes().size()));
             p.set("touch_aim", touch_aim_bld_);                 // W6-01-02 aimed building (-1 none)
             p.set("touch_aim_sw", touch_aim_cx_ != INT_MIN ? 1 : 0);   // W6-01-07 SW target aimed
             p.set("cameo_menu", cameo_menu_buttons().empty() ? 0 : 1); // W6-01-03 cameo popup up

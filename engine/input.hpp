@@ -180,6 +180,10 @@ public:
     // Stop (StopObject FUN_0072FF70: per selected own object queue EVENT_IDLE)
     // -> drop the target/enter/unload and halt at the next cell.
     void stop_selected();
+    bool planning_mode() const { return planning_; }
+    std::size_t planned_moves() const { return planned_moves_.size(); }
+    const std::vector<Command>& planned_commands() const { return planned_moves_; }
+    void toggle_planning();
     // Guard (GuardObject FUN_0072FE30: MegaMission(Area_Guard 0xB, self))
     // -> stop, then anchor the guard point at the unit's current cell.
     void guard_selected();
@@ -253,10 +257,10 @@ public:
     // Esc cancels. UI state only -- the sim is untouched until main.cpp calls
     // World::fire_superweapon. No existing flow arms this, so this branch is
     // never entered in any existing demo.
-    void arm_superweapon() { sw_targeting_ = true; }
+    void arm_superweapon() { planning_=false;planned_moves_.clear();sw_targeting_ = true; }
     // W2-AN-04: which SW type the armed targeting is for (SuperweaponType as
     // int; the cursor shape) and the Chronosphere's second (destination) click.
-    void arm_superweapon(int type, int phase) { sw_targeting_ = true; sw_type_ = type; sw_phase_ = phase; }
+    void arm_superweapon(int type, int phase) { planning_=false;planned_moves_.clear();sw_targeting_ = true; sw_type_ = type; sw_phase_ = phase; }
     int sw_armed_type() const { return sw_type_; }
     int sw_armed_phase() const { return sw_phase_; }
     void cancel_superweapon() { sw_targeting_ = false; }
@@ -267,10 +271,8 @@ public:
     // The original's DisplayClass carries FIVE mutually-exclusive one-byte mode
     // flags (RepairMode +0x11B0, SellMode +0x11B1, PowerToggleMode +0x11B2,
     // PlanningMode +0x11B3, PlaceBeaconMode +0x11B4) and EVERY setter clears
-    // the other four. The last three have no feature behind them in this engine
-    // (no per-building power toggle, no waypoint planning, no beacons), so they
-    // are recorded but not modeled: the exclusion set here is
-    // {pending placement, sw_targeting, Repair, Sell}.
+    // the other four. Waypoint planning captures local moves until committed;
+    // its resulting QMove events are deterministic simulation commands.
     enum class BaseMode { None, Repair, Sell, PowerToggle };   // W5-E2 PowerToggleMode (+0x11B2)
 
     // SetRepairMode / SetSellMode (FUN_004AC7D0 / FUN_004AC570), transcribed:
@@ -535,6 +537,8 @@ private:
     int spy_blackout_frames_ = 1000;   // SpyPowerBlackout
 
     // G-05/G-04 state.
+    bool planning_ = false;
+    std::vector<Command> planned_moves_;
     Scheme scheme_ = Scheme::Original;
     bool mod_shift_ = false, mod_ctrl_ = false, mod_alt_ = false;  // latest event's modifiers
     bool ev_touch_ = false;                    // W4-AM-09: latest pointer event was a finger

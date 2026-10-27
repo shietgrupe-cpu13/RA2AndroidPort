@@ -10,6 +10,7 @@ int touch_mode() const {
     if (input_.sw_targeting()) return 4;
     if (input_.base_mode() == ra2engine::Input::BaseMode::Sell) return 1;
     if (input_.base_mode() == ra2engine::Input::BaseMode::Repair) return 2;
+    if(input_.planning_mode())return 5;
     return 0;
 }
 // --- W6-01-12: HUD message / objective / tooltip text is drawn 1.5x on a
@@ -49,8 +50,8 @@ void touch_cancel_mode() {
 }
 void draw_touch_mode_banner(SDL_Renderer* ren) {
     if (!touch_banner_visible()) return;
-    static const char* kTitle[5] = {"", "SELL BUILDING", "REPAIR BUILDING", "PLACE BUILDING", "TARGET ABILITY"};
-    static const char* kHelp[5] = {"", "Tap twice to sell", "Tap twice to repair", "Tap twice to build", "Tap twice to fire"};
+    static const char* kTitle[6] = {"", "SELL BUILDING", "REPAIR BUILDING", "PLACE BUILDING", "TARGET ABILITY", "WAYPOINT ROUTE (Z)"};
+    static const char* kHelp[6] = {"", "Tap twice to sell", "Tap twice to repair", "Tap twice to build", "Tap twice to fire", "Tap points; ROUTE Z starts; X cancels"};
     const SDL_Rect b = touch_banner_rect();
     SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
     SDL_SetRenderDrawColor(ren, 20, 24, 28, 0xC8);

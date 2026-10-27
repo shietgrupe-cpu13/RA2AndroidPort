@@ -12,6 +12,54 @@
 
 namespace ra2engine {
 
+void World::clear_waypoints(int issuer,const std::vector<int>& ids) {
+    for(int i:ids)if(i>=0 && i<static_cast<int>(units_.size()) && can_command(issuer,units_[i].house))
+        waypoint_routes_.erase(i);
+}
+void World::queue_waypoint(int issuer,const std::vector<int>& ids,int x,int y) {
+    if(x<0 || y<0 || x>=grid_w_ || y>=grid_h_)return;
+    std::vector<int> starters;
+    for(int i:ids) {
+        if(i<0 || i>=static_cast<int>(units_.size()))continue;
+        const Unit& u=units_[i];
+        if(!u.alive || u.die_time>=0 || u.cargo_of>=0 || !can_command(issuer,u.house) ||
+           (u.is_aircraft && u.an.t.fixed_wing) || (u.deployed && u.deploy_fire))continue;
+        auto it=waypoint_routes_.find(i);
+        if(it==waypoint_routes_.end())starters.push_back(i);
+        else if(it->second.house==issuer && it->second.points.size()<64)it->second.points.push_back({x,y});
+    }
+    // Preserve normal movement-domain formation assignment for the first leg.
+    if(!starters.empty())group_move(issuer,starters,x,y);
+    for(int i:starters) {
+        const Unit& u=units_[i];
+        const Cellxy goal=u.has_flight_goal ? Cellxy{u.flight_goal_x,u.flight_goal_y} :
+            u.path.empty() ? Cellxy{u.cell_x,u.cell_y} : u.path.back();
+        waypoint_routes_[i]={issuer,{goal}};
+    }
+}
+void World::step_waypoints() {
+    for(auto it=waypoint_routes_.begin();it!=waypoint_routes_.end();) {
+        const int i=it->first;
+        auto& r=it->second;
+        if(i<0 || i>=static_cast<int>(units_.size()) || !units_[i].alive || units_[i].die_time>=0 ||
+           units_[i].cargo_of>=0 || !can_command(r.house,units_[i].house) || r.points.empty()) {
+            it=waypoint_routes_.erase(it);continue;
+        }
+        const Unit& u=units_[i];
+        if(u.moving() || u.has_flight_goal || u.frozen || u.cell_x!=r.points.front().x || u.cell_y!=r.points.front().y) {
+            ++it;continue;
+        }
+        r.points.erase(r.points.begin());
+        if(r.points.empty()) {it=waypoint_routes_.erase(it);continue;}
+        const auto next=r.points.front();
+        group_move(r.house,{i},next.x,next.y);
+        const Unit& moved=units_[i];
+        r.points.front()=moved.has_flight_goal ? Cellxy{moved.flight_goal_x,moved.flight_goal_y} :
+            moved.path.empty()?Cellxy{moved.cell_x,moved.cell_y}:moved.path.back();
+        ++it;
+    }
+}
+
 namespace {
 bool orderable(const Unit& u) { return u.alive && u.die_time < 0.0 && u.cargo_of < 0; }
 }  // namespace
@@ -20,6 +68,7 @@ void World::order_stop(int idx) {
     if (idx < 0 || idx >= static_cast<int>(units_.size())) return;
     Unit& u = units_[idx];
     if (!orderable(u)) return;
+    waypoint_routes_.erase(idx);
     if (u.deploys_into>=0 && u.deploys_into<static_cast<int>(btypes().size()) && btypes()[u.deploys_into].slave_count>0) {
         u.manual_hold=true;
         u.deploy_mission=0;

@@ -284,6 +284,23 @@
 
     void w2_setup(bool skirmish) {
         world_.set_sw_params(resolve_sw_params(rules_));
+        auto launch_profile=[&](const std::string& id) {
+            if(id.empty())return;
+            const auto weapons=ra2engine::resolve_type_weapons(rules_,id);
+            const std::string primary=weapons.slot[0].id, secondary=weapons.slot[1].id;
+            const std::string weapon=rules_.section_flag(primary,"Spawner",false)?primary:
+                (rules_.section_flag(secondary,"Spawner",false)?secondary:"");
+            if(weapon.empty())return;
+            ra2engine::SpawnLaunchProfile p;
+            art_.fire_flh(rules_.image(id),p.second.data(),"SecondSpawnOffset");
+            p.decloak=rules_.section_flag(weapon,"DecloakToFire",true);
+            world_.set_spawn_launch_profile(id,p);
+        };
+        // Configuration enters the synchronized World: enumerate the full
+        // rules registry, not this peer's local faction/sidebar roster.
+        for(const char* list:{"VehicleTypes","AircraftTypes","InfantryTypes"})
+            for(const auto& id:ra2engine::ini_list_values(rules_ini_,list))launch_profile(id);
+        for(const auto& u:world_.units())launch_profile(u.tg.t.rules_id);
         const std::size_t n = ba_.roster.size();
         std::vector<int> swb(n, 0), rep(n, 0), air(n, 0);
         std::vector<std::pair<int, int>> pads;

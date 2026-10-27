@@ -4435,6 +4435,8 @@ int shp_vehicle_frame(const ShpVehicleArt& s, const ra2engine::Unit& u, int coun
 // its Input's selection; the non-interactive demos draw this one.
 ra2engine::Selection g_demo_selection;
 
+void draw_text(SDL_Renderer*,const std::string&,int,int,int,std::uint8_t,std::uint8_t,std::uint8_t);
+
 void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
                   UnitAssets& ua, ra2engine::World& world, const ra2engine::Camera& cam,
                   int W, int H, const ra2engine::Input* input = nullptr,
@@ -4497,6 +4499,25 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
             auto marker_cam=cam;marker_cam.y+=int(std::lround((u.level-pres_ground_level(world,u))*15.0));
             ra2engine::draw_selection(ren,u,marker_cam,W,H,veh_width(u));
         }
+    }
+    // Local waypoint preview, bounded by the planner's 64-node cap. It does
+    // not ask the simulation to find paths or change any movement state.
+    if(input && input->planning_mode()) {
+        const auto& commands=input->planned_commands();
+        SDL_BlendMode blend;SDL_GetRenderDrawBlendMode(ren,&blend);
+        SDL_SetRenderDrawBlendMode(ren,SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(ren,245,205,80,220);
+        bool previous=false;ra2engine::ScreenPt last{};int number=0;
+        for(const auto& c:commands)if(c.dest.is_cell()) {
+            const int x=c.dest.cell_x(),y=c.dest.cell_y();
+            const auto p=ra2engine::overlay_draw_center(x,y,world.deck_z(x,y)/104,0);
+            const int px=p.x+cam.x,py=p.y+cam.y;
+            if(previous)SDL_RenderDrawLine(ren,last.x,last.y,px,py);
+            SDL_Rect marker{px-5,py-5,10,10};SDL_RenderDrawRect(ren,&marker);
+            draw_text(ren,std::to_string(++number),px+7,py-4,1,245,205,80);
+            last={px,py};previous=true;
+        }
+        SDL_SetRenderDrawBlendMode(ren,blend);
     }
     // Sprites back-to-front so nearer units overlap farther ones. Vehicles
     // (an image with a VehicleAssets entry) draw via voxel sprites; otherwise
@@ -7980,6 +8001,7 @@ public:
         bstates_ = s.bstates;
         prev_audio_state_.clear();
         input_.cancel_placement();
+        input_.clear_cursor_modes();
         input_.set_repair_mode(0);
         input_.set_sell_mode(0);
     }

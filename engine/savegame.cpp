@@ -346,6 +346,16 @@ bool SaveAccess::valid_world(const World& w, std::string* why) {
     auto unit_ix = [&](int i) { return i >= -1 && i < nu; };
     auto bld_ix = [&](int i) { return i >= -1 && i < nb; };
     auto house_ix = [&](int h) { return h >= 0 && h < kMaxHouses; };
+    if(w.waypoint_routes_.size()>w.units_.size())return bad("waypoint route count");
+    for(const auto& route:w.waypoint_routes_) {
+        if(route.first<0 || route.first>=nu || !house_ix(route.second.house) ||
+           route.second.points.empty() || route.second.points.size()>64)return bad("waypoint route");
+        for(const auto& p:route.second.points)
+            if(p.x<0 || p.y<0 || p.x>=w.grid_w_ || p.y>=w.grid_h_)return bad("waypoint cell");
+    }
+    if(w.spawn_launch_profiles_.size()>4096)return bad("spawn launch profile count");
+    for(const auto& p:w.spawn_launch_profiles_)for(int x:p.second.second)
+        if(x<-1000000 || x>1000000)return bad("spawn launch offset");
     if(w.drain_.delay<1 || w.drain_.amount<0 || w.drain_.links.size()>w.units_.size())return bad("drain configuration");
     if(w.chaos_.active.size()>w.units_.size() || w.chaos_.pending.size()>w.units_.size())return bad("chaos status count");
     if(!w.chaos_.enabled && (!w.chaos_.active.empty() || !w.chaos_.pending.empty()))return bad("disabled chaos status");

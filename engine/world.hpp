@@ -20,6 +20,7 @@
 #include "repair_sell.hpp"  // Repair & Sell: RepairSellRules + the pure tick arithmetic
 #include "crate.hpp"  // P5 Crates: GameRandom/CrateRules/Powerup (pure)
 #include "abilities.hpp"    // P4 abilities: AbilityProfile/AbilityRules/RadField
+#include "waypoint_route.hpp"
 #include "superweapon.hpp"  // CB-4 Superweapons: Superweapon/SuperweaponType lifecycle
 #include "visibility.hpp"  // Shroud/Fog: cell_in_sight/reveal_disc (pure reveal math)
 #include "ra2assets/map.hpp"
@@ -1341,6 +1342,10 @@ public:
     // resumes (at SeekOre) the instant it arrives -- a ground right-click on
     // a harvester keeps this existing move path rather than a dedicated one.
     void group_move(int issuer, const std::vector<int>& ids, int goal_x, int goal_y);
+    void queue_waypoint(int issuer, const std::vector<int>& ids, int x, int y);
+    void clear_waypoints(int issuer, const std::vector<int>& ids);
+    const std::map<int,WaypointRoute>& waypoint_routes() const { return waypoint_routes_; }
+    void step_waypoints();
 
     // Order every SELECTED house-0, alive, non-dying unit to attack
     // `target_idx`: sets target=target_idx and attack_order=true (pursues
@@ -1718,6 +1723,9 @@ public:
     // Paradrop / spawner / missile unit types (rules id -> resolved combat),
     // registered by the scene from the roster's Spawns= / the SW params.
     void register_an_type(const std::string& id, const UnitCombat& c) { an_.types[id] = c; }
+    void set_spawn_launch_profile(const std::string& id, const SpawnLaunchProfile& p) {
+        spawn_launch_profiles_[id] = p;
+    }
     bool has_an_type(const std::string& id) const { return an_.types.count(id) != 0; }
     // ===== Wave-2 W2-AN: naval / aircraft (world_an.cpp) =====================
     // A cloaked (submerged) enemy sub that `house` has no sonar contact on.
@@ -3157,6 +3165,8 @@ private:
     DrainState drain_;
     mutable ChaosState chaos_;
     mutable DiskState disk_;
+    std::map<int,WaypointRoute> waypoint_routes_;
+    std::map<std::string,SpawnLaunchProfile> spawn_launch_profiles_;
     ElevationRules elev_rules_;   // W5-B R-063
     AnimTable anims_;  // Unit::image -> UnitAnimSeq (set_anim); unregistered -> default_anim()
     bool inf_anims_ = false;                       // W3-B

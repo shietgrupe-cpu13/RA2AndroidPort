@@ -1466,3 +1466,99 @@ TEST_CASE("Disc drain: flight reaches the building and interrupted links cannot 
  auto& links=const_cast<std::vector<DrainLink>&>(w.disc_drains());links[0].unit=9999;
  CHECK_FALSE(save::load_world(copy,save::save_world(w)));
 }
+
+TEST_CASE("waypoint routes: committed legs survive save/load and complete in order") {
+ Rig r;World a(r.map);a.add_combat_unit(4,4,0,unit("ROUTE"));
+ a.queue_waypoint(0,{0},8,4);a.queue_waypoint(0,{0},8,8);
+ REQUIRE(a.waypoint_routes().size()==1);CHECK(a.waypoint_routes().at(0).points.size()==2);
+ for(int n=0;n<5;++n)a.step(1.0/15.0);
+ World b(r.map);REQUIRE(save::load_world(b,save::save_world(a)));
+ bool corner=false;
+ for(int n=0;n<240;++n) {
+  a.step(1.0/15.0);b.step(1.0/15.0);
+  CHECK(save::world_sync_hash(a)==save::world_sync_hash(b));
+  if(a.units()[0].cell_x==8 && a.units()[0].cell_y==4)corner=true;
+ }
+ CHECK(corner);CHECK(a.units()[0].cell_x==8);CHECK(a.units()[0].cell_y==8);
+ CHECK(a.waypoint_routes().empty());CHECK(save::save_world(a)==save::save_world(b));
+}
+TEST_CASE("waypoint routes: Stop, replacement move, ownership and bounds cancel safely") {
+ Rig r;World w(r.map);w.add_combat_unit(4,4,0,unit("ROUTE"));
+ w.queue_waypoint(0,{0},8,4);w.queue_waypoint(0,{0},8,8);w.order_stop(0);
+ CHECK(w.waypoint_routes().empty());
+ w.queue_waypoint(0,{0},8,4);auto c=make_mega(w,{0},Mission::Move,{},Target::cell(5,6));
+ apply_command(w,c);CHECK(w.waypoint_routes().empty());
+ w.queue_waypoint(0,{0},8,4);w.units()[0].house=1;w.step_waypoints();
+ CHECK(w.waypoint_routes().empty());
+ w.queue_waypoint(0,{0},8,4);w.queue_waypoint(1,{0},-1,4);CHECK(w.waypoint_routes().empty());
+}
+TEST_CASE("waypoint input: Z planning buffers movement, commits queued commands, right click cancels") {
+ for(bool original:{false,true}) {
+ Rig r;World w(r.map);w.add_combat_unit(4,4,0,unit("ROUTE"));Camera cam;
+ Input in(w,cam,1280,720);in.set_scheme(original?Input::Scheme::Original:Input::Scheme::Legacy);in.selection().set(0);
+ std::vector<Command> commands;in.set_command_sink([&](Command c){commands.push_back(c);});
+ auto click=[&](int x,int y) {InputEvent e;e.kind=InputEvent::PointerDown;
+   e.button=original?InputEvent::Left:InputEvent::Right;e.x=x;e.y=y;e.t_ms=1000+static_cast<unsigned>(commands.size()*1000+in.planned_moves()*1000);in.handle(e);
+   e.kind=InputEvent::PointerUp;in.handle(e);};
+ in.toggle_planning();REQUIRE(in.planning_mode());click(150,195);click(30,255);
+ CHECK(commands.empty());CHECK(in.planned_moves()==2);
+ in.toggle_planning();REQUIRE(commands.size()==2);
+ CHECK(commands[0].mission==Mission::QMove);CHECK(commands[1].mission==Mission::QMove);
+ CHECK_FALSE(in.planning_mode());
+ in.toggle_planning();click(150,195);REQUIRE(in.planned_moves()==1);
+ CHECK(in.cancel_one_mode());CHECK_FALSE(in.planning_mode());CHECK(in.planned_moves()==0);
+ CHECK(commands.size()==2);
+ }
+}
+TEST_CASE("missile launch profiles: secondary muzzle, second tube, surfacing and saved launch hold") {
+ Rig r;World w(r.map);SwParams sp;sp.rockets.block[2].pause_frames=120;sp.rockets.block[2].tilt_frames=60;
+ w.set_sw_params(sp);auto rocket=unit("CMISL");rocket.is_aircraft=true;rocket.is_vehicle=true;
+ rocket.an.spawned=true;rocket.an.missile=true;rocket.an.rocket_kind=2;rocket.an.rocket_speed=38;
+ w.register_an_type("CMISL",rocket);
+ auto launcher=unit("BSUB");launcher.is_vehicle=true;launcher.damage=1;launcher.range=18;launcher.rof=150;
+ launcher.omni_fire=true;launcher.an.spawner_slot=1;launcher.an.spawns="CMISL";
+ launcher.an.spawns_number=2;launcher.an.spawner_range=20;launcher.an.spawn_regen_frames=400;
+ launcher.an.underwater=true;launcher.an.cloakable=true;launcher.an.naval_targeting=7;launcher.an.land_targeting=2;
+ launcher.w6.decloak_to_fire=false;launcher.secondary.valid=true;launcher.secondary.damage=25;
+ launcher.secondary.range=20;launcher.secondary.rof=50;launcher.secondary.verses.assign(11,100);
+ launcher.secondary.omni_fire=true;launcher.secondary.proj.flh[2]=-40;
+ SpawnLaunchProfile p;p.second={-70,0,0};w.set_spawn_launch_profile("BSUB",p);
+ w.add_combat_unit(2,2,0,launcher);w.add_combat_unit(14,2,1,unit("TARGET"));
+ w.units()[0].body_facing=16384;w.group_attack(0,{0},1);
+ for(int n=0;n<100 && w.units().size()<4;++n)w.step(1.0/15.0);
+ REQUIRE(w.units().size()>=4);CHECK_FALSE(w.units()[0].an.submerged);
+ CHECK(w.units()[2].an.rocket.x==doctest::Approx(512));
+ CHECK(w.units()[3].an.rocket.x==doctest::Approx(442));
+ CHECK(w.units()[2].an.rocket.z==doctest::Approx(-40));
+ CHECK(w.units()[3].an.rocket.z==doctest::Approx(-40));
+ World copy(r.map);REQUIRE(save::load_world(copy,save::save_world(w)));
+ for(int n=0;n<60;++n) {w.step(1.0/15.0);copy.step(1.0/15.0);CHECK(save::save_world(w)==save::save_world(copy));}
+ CHECK_FALSE(w.units()[0].an.submerged);
+}
+TEST_CASE("nuclear damage: stock armor multipliers, friendly fire and falloff remain explicit") {
+ Rig r;World w(r.map);SwParams p;p.nuke_up_frames=1;p.nuke_down_frames=1;p.nuke_rad_level=0;w.set_sw_params(p);
+ auto light=unit("LIGHT");light.strength=5000;light.armor="light";
+ w.add_combat_unit(8,8,0,light);w.add_combat_unit(13,8,1,light);
+ std::array<int,11> verses={100,100,100,200,100,100,60,100,8,100,100};
+ w.grant_superweapon(0,SuperweaponType::Nuke,0,600,10,.02,verses);
+ w.step(1.0/15.0);REQUIRE(w.fire_superweapon_at(0,SuperweaponType::Nuke,8,8));
+ w.step(1.0/15.0);w.step(1.0/15.0);
+ CHECK(w.units()[0].hp==3800);CHECK(w.units()[1].hp==4388);
+}
+
+TEST_CASE("bridge engineer roles: all faction engineers repair a destroyed span without capturing its hut") {
+ for(int house=0;house<3;++house) {
+  Rig r;World w(r.map);BuildingTypeDef hut;hut.id="CABHUT";hut.strength=100;hut.bridge_repair_hut=true;
+  w.set_building_types({hut});int b=w.add_building(0,8,8,1,1,3,100,0,0,true);
+  std::vector<std::uint8_t> deck(w.grid_w()*w.grid_h(),0);
+  for(int x=9;x<=13;++x)deck[8*w.grid_w()+x]=1;
+  w.set_high_bridges(deck);REQUIRE(w.force_bridge_break(11,8)==5);
+  auto eng=unit(house==0?"ENGINEER":house==1?"SENGINEER":"YENGINEER");eng.w7.engineer=true;
+  w.set_order_issuer(house);w.add_combat_unit(7,8,house,eng);
+  REQUIRE(w.engineer_action(0,b)==World::EngineerAct::Hut);
+  auto capture=make_mega(w,{0},Mission::Capture,Target::building(b),{});
+  capture.house=static_cast<std::int8_t>(house);apply_command(w,capture);
+  for(int n=0;n<30;++n)w.step(1.0/15.0);
+  CHECK(w.bridge_cells_destroyed()==0);CHECK_FALSE(w.units()[0].alive);CHECK(w.buildings()[b].house==3);
+ }
+}

@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <climits>
+#include <cstdlib>
 #include <SDL.h>
 #undef main
 #include "input.hpp"
@@ -32,12 +33,18 @@ struct FakeWorld {
  bool controllable(int h)const{return h==0;}
  bool packable=false;
  bool can_pack_slave_miner(int)const{return packable;}
+ bool can_pack_conyard(int)const{return false;}
+ bool building_can_attack(int)const{return false;}
  ra2engine::World::Side house_side(int)const{return ra2engine::World::Side::Yuri;}
 };
 struct FakeInput {
  ra2engine::Selection sel; int building=-1,stops=0,group=0,created=0;
  auto& selection(){return sel;} const auto& selection()const{return sel;}
  int selected_building()const{return building;}
+ bool planning=false;
+ bool planning_mode()const{return planning;}
+ std::size_t planned_moves()const{return 0;}
+ void toggle_planning(){planning=!planning;}
  void type_select(){} void stop_selected(){++stops;} void guard_selected(){} void scatter_selected(){}
  void group_create(int n){created=n;} void group_select(int n,uint32_t){group=n;}
  bool placing=false;
@@ -71,6 +78,8 @@ int main(){
   assert(e.ctrl && e.shift && !e.alt);
  }
  assert(!s.touch_move_);
+ s.touch_command(s.TB_ROUTE,false,0);assert(s.input_.planning_mode());
+ s.touch_command(s.TB_ROUTE,false,0);assert(!s.input_.planning_mode());
  s.input_.placing=true;
  auto preview=event(InputEvent::PointerDown,500,200);assert(s.touch_bar_handle(preview));
  auto cancel=event(InputEvent::PointerUp,500,200);cancel.button=InputEvent::Right;

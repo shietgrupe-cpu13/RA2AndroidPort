@@ -164,6 +164,9 @@ void World::an_step_naval(double dt) {
                 // W6-04-25: a DecloakToFire=no weapon fires without surfacing.
                 if (u.fire_flash >= 0.4 - 1e-9 && u.w6.t.decloak_to_fire)
                     u.an.surface_left_frames = P.cloak_delay_frames;
+                const auto sp=spawn_launch_profiles_.find(u.tg.t.rules_id.empty()?u.image:u.tg.t.rules_id);
+                if(u.an.launch_hold && sp!=spawn_launch_profiles_.end() && sp->second.decloak)
+                    u.an.surface_left_frames=P.cloak_delay_frames;
                 if (u.an.surface_left_frames > 0) --u.an.surface_left_frames;   // Net L0: whole frames
                 u.an.submerged = u.an.surface_left_frames <= 0;
             }
@@ -366,7 +369,7 @@ void World::an_spawn_launch(int i, int k) {
     Unit& s = units_[static_cast<std::size_t>(si)];
     const int tu = own.an.sp_tgt_unit, tb = own.an.sp_tgt_bld;
     own.an.sp_unit[static_cast<std::size_t>(k)] = si;
-    s.fx = own.fx + 0.2 * k;
+    s.fx = own.fx + (missile ? 0.0 : 0.2*k);
     s.fy = own.fy;
     s.cell_x = own.cell_x;
     s.cell_y = own.cell_y;
@@ -402,11 +405,30 @@ void World::an_spawn_launch(int i, int k) {
         }
         const RocketBlock& blk = an_.sw.rockets.block[static_cast<std::size_t>(
             std::clamp(s.an.t.rocket_kind < 0 ? 1 : s.an.t.rocket_kind, 0, 2))];
-        rocket_launch(blk, s.an.rocket, s.fx * kLept, s.fy * kLept, kRocketDeckZ, gx * kLept, gy * kLept);
+        // A spawn leaves the active launcher slot, in body space. The second
+        // missile adds SecondSpawnOffset before alternating the lateral sign.
+        const ProjectileSpec& muzzle=own.an.t.spawner_slot==1 ? own.w2.proj : own.p_proj;
+        const std::string& id=own.tg.t.rules_id.empty() ? own.image : own.tg.t.rules_id;
+        const auto profile=spawn_launch_profiles_.find(id);
+        SpawnLaunchProfile p;
+        if(profile!=spawn_launch_profiles_.end())p=profile->second;
+        double f=muzzle.flh[0],l=muzzle.flh[1],h=muzzle.flh[2];
+        if(k&1) {f+=p.second[0];l=-(l+p.second[1]);h+=p.second[2];}
+        const double angle=own.body_facing*(2.0*3.14159265358979323846/65536.0);
+        const double dx=om::sin(angle),dy=-om::cos(angle);
+        s.fx=own.fx+(f*dx+l*dy)/kLept;
+        s.fy=own.fy+(f*dy-l*dx)/kLept;
+        // Unbound test/legacy types retain the historical deck height.
+        const double launch_z=profile!=spawn_launch_profiles_.end() ? h : kRocketDeckZ;
+        rocket_launch(blk, s.an.rocket, s.fx * kLept, s.fy * kLept, launch_z, gx * kLept, gy * kLept);
+        if(p.decloak && own.an.t.underwater && own.an.t.cloakable) {
+            own.an.submerged=false;
+            own.an.surface_left_frames=std::max(own.an.surface_left_frames,an_.sw.cloak_delay_frames);
+        }
         s.an.rocket.tx = gx * kLept;
         s.an.rocket.ty = gy * kLept;
         s.an.rocket.tz = gz;
-        s.altitude = kRocketDeckZ;
+        s.altitude = launch_z;
         s.body_facing = facing_u16_from_delta(om::cos(s.an.rocket.yaw), om::sin(s.an.rocket.yaw));
     } else {
         // case 0, aircraft: SetDestination(the owner cell's neighbour in

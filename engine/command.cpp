@@ -207,9 +207,12 @@ void apply_mega(World& w, const Command& c, CommandHost* host) {
     const std::vector<int> ids = unit_whom(w,c);
     // W4-SQ: a player order takes the units out of their script team.
     w.mark_player_orders(ids);
+    if(c.mission!=Mission::QMove)w.clear_waypoints(H,ids);
     switch (c.mission) {
-        case Mission::Move:
         case Mission::QMove:
+            if(c.dest.is_cell())w.queue_waypoint(H,ids,c.dest.cell_x(),c.dest.cell_y());
+            return;
+        case Mission::Move:
             if (c.dest.is_cell()) w.group_move(H, ids, c.dest.cell_x(), c.dest.cell_y());
             if(c.dest.is_cell())for(const auto& t:c.whom) {
                 if(!t.is_building() || !bld_ok(w,t.id) || w.buildings()[t.id].house!=H)continue;
@@ -321,6 +324,7 @@ void apply_deploy(World& w, const Command& c) {
             }
         }
     const std::vector<int> ids = unit_whom(w,c);
+    w.clear_waypoints(H,ids);
     w.group_unload(H, ids);
     for (int i : ids)
         if (unit_ok(w, i) && w.can_command(H, w.units()[static_cast<std::size_t>(i)].house)) (void)w.order_deploy(i);
@@ -387,6 +391,7 @@ void apply_command(World& w, const Command& c, CommandHost* host) {
         case EventType::Scatter: {
             const std::vector<int> ids = unit_whom(w,c);
             w.mark_player_orders(ids);
+            w.clear_waypoints(H,ids);
             w.group_scatter(H, ids);
             return;
         }
