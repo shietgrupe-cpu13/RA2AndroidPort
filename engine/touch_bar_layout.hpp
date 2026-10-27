@@ -1,7 +1,6 @@
 #pragma once
 #include <algorithm>
 #include <cstdlib>
-#include <string>
 
 namespace ra2engine {
 struct TouchBarLayout {
@@ -19,15 +18,7 @@ struct TouchBarLayout {
     static int scaled(int val) {
         return static_cast<int>(static_cast<float>(val) * scale_factor());
     }
-    static int dock_mode() {
-        if (const char* env = std::getenv("RA2_TOUCH_DOCK")) {
-            if (std::string(env) == "left_side") return 1;
-            if (std::string(env) == "bottom_right") return 2;
-        }
-        return 0; // 0 = bottom_left
-    }
     static int top(int viewport_height, int count) {
-        if (dock_mode() == 1) return scaled(8);
         const int m = scaled(margin);
         const int g = scaled(gap);
         const int h = scaled(height);
@@ -38,10 +29,6 @@ struct TouchBarLayout {
     }
     static Rect toggle(int viewport_width, int viewport_height, int count, bool collapsed) {
         const int m = scaled(margin);
-        if (dock_mode() == 1) {
-            const int sz = scaled(48);
-            return {m, m, sz, sz};
-        }
         const int pw = std::min(scaled(panel_width), viewport_width - 2 * m);
         const int sz = scaled(56);
         if (collapsed) return {m, viewport_height - m - sz, sz, sz};
@@ -49,9 +36,6 @@ struct TouchBarLayout {
     }
     static Rect banner(int viewport_width, int panel_top) {
         const int m = scaled(margin);
-        if (dock_mode() == 1) {
-            return {m, panel_top + scaled(140), scaled(140), scaled(48)};
-        }
         const int pw = std::min(scaled(panel_width), viewport_width - 2 * m);
         return {m, panel_top - scaled(52), pw, scaled(48)};
     }
@@ -59,15 +43,6 @@ struct TouchBarLayout {
         const int m = scaled(margin);
         const int g = scaled(gap);
         const int h = scaled(height);
-        if (dock_mode() == 1) {
-            // Left-side vertical 2-column stack
-            const int cols = 2;
-            const int btn_w = scaled(68);
-            const int btn_h = scaled(50);
-            const int gx = m + (index % cols) * (btn_w + g);
-            const int gy = m + scaled(60) + (index / cols) * (btn_h + g);
-            return {gx, gy, btn_w, btn_h};
-        }
         const int pw = std::min(scaled(panel_width), viewport_width - 2 * m);
         if (count == 13 && index >= 8) {
             const int w = (pw - 4 * g) / 5;
