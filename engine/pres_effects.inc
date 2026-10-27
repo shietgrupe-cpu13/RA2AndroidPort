@@ -509,9 +509,7 @@ public:
             const std::string wid=projectile_weapon(w,p);
             if (wid.empty()) continue;
             const ProjArt& pa = proj_art(wid);
-            const ra2assets::MapCell* mc =
-                w.map().at(ra2engine::lepton_to_cell(p.x), ra2engine::lepton_to_cell(p.y));
-            const double z = (mc ? mc->level : 0) * 104.0 + p.z;
+            const double z = p.terrain_origin_level * 104.0 + p.z;
             if (!pa.trailer.empty() && frame_ % std::max(1, pa.spawn_delay) == 0)
                 fx_->spawn(pa.trailer, p.x / 256.0, p.y / 256.0, 0, z * kFxLepPx);
             if (pa.line) {
@@ -570,9 +568,8 @@ public:
             // launch anim when the tilt ends and it leaves the launcher, then
             // the trail every 3 frames while it flies.
             if (u.an.t.missile || pres_upper(u.image) == v3_image() || pres_upper(u.image) == dmisl_image()) {
-                const double z = u.level * 104.0 + u.altitude;
-                if(u.an.t.rocket_kind==ra2engine::kRocketCMisl &&
-                   u.an.rocket.phase<ra2engine::kRocketClimb && (u.an.rocket.frames%24)==1) {
+                const double z = u.an.t.missile ? u.an.rocket.terrain_origin_level*104.0+u.an.rocket.z : u.level*104.0+u.altitude;
+                if((u.an.rocket.phase==ra2engine::kRocketPause || (u.an.t.rocket_kind==ra2engine::kRocketCMisl && u.an.rocket.phase==ra2engine::kRocketTilt)) && (u.an.rocket.frames%24)==1) {
                     if(fx_->spawn("V3TAKOFF",u.fx,u.fy,0,std::max(0.0,z-10.0)*kFxLepPx))++v3_puffs_;
                 }
                 if (u.an.rocket.phase >= ra2engine::kRocketClimb) {

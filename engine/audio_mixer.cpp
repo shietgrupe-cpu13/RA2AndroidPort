@@ -345,8 +345,12 @@ void Mixer::retire_() {
                   voices_.end());
 }
 
+void Mixer::set_paused(bool paused) { std::lock_guard<std::recursive_mutex> lock(mu_); paused_=paused; }
+bool Mixer::paused() const { std::lock_guard<std::recursive_mutex> lock(mu_); return paused_; }
+
 void Mixer::render(int16_t* out, std::size_t frames) {
     std::lock_guard<std::recursive_mutex> lk(mu_);
+    if (paused_) { std::fill_n(out, frames, int16_t{0}); return; }
     std::lock_guard<std::mutex> bl(*bank_.mu_);
     if (music_ && music_buf_.size() < frames * 2) music_buf_.resize(frames * 2);
     const std::size_t mframes = music_ ? music_->read(music_buf_.data(), frames) : 0;
@@ -420,6 +424,7 @@ inline int16_t soft_limit(float x) {
 
 void Mixer::render_stereo(int16_t* lr, std::size_t frames) {
     std::lock_guard<std::recursive_mutex> lk(mu_);
+    if (paused_) { std::fill_n(lr, frames * 2, int16_t{0}); return; }
     std::lock_guard<std::mutex> bl(*bank_.mu_);
     if (music_ && music_buf_.size() < frames * 2) music_buf_.resize(frames * 2);
     const std::size_t mframes = music_ ? music_->read(music_buf_.data(), frames) : 0;

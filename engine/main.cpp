@@ -3938,6 +3938,7 @@ void draw_vehicle_unit(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2
     // aircraft, so no existing screenshot changes [spec §8].
     const int extra_dy =
         g_sink_drop_px > 0 ? -g_sink_drop_px   // W7-12-11: the presentation's sinking hull
+        : u.an.t.missile ? static_cast<int>(std::lround(u.an.rocket.z*36.74/256.0))+(u.an.rocket.terrain_origin_level-u.level)*15
         : (u.is_aircraft && u.altitude > 0.0) ? ra2engine::altitude_to_screen_dy(u.altitude) +
                                                   pres_jumpjet_wobble_px(g_draw_unit_idx, u)   // W5-PRES wobble
         : (u.an.sinking && u.die_time >= 0.0) ? -static_cast<int>(u.die_time * 24.0)   // W2-AN-25
@@ -4363,9 +4364,8 @@ void draw_projectiles(SDL_Renderer* ren, const ra2engine::World& world,
         const int level = mc ? mc->level : 0;
         const int gx = static_cast<int>(std::lround((x - y) * 30.0)) + cam.x + 30;
         const int gy = static_cast<int>(std::lround((x + y) * 15.0 - level * 15)) + cam.y + 15;
-        // World's bullet Z is relative to local terrain (unit_lz and the
-        // detonation pass use the same convention). Keep the ground anchor.
-        const int sy = ra2engine::projectile_screen_y(gy,p.z);
+        // Flight Z uses its launch terrain reference; only the shadow follows the ground.
+        const int sy = ra2engine::projectile_screen_y(gy+(level-p.terrain_origin_level)*15,p.z);
         if (gx < -8 || gx > W + 8 || sy > H + 8 || gy < -8) continue;
         // W4: the FIRING weapon's art (slot / base defence / voxel bullet).
         if (tc && g_fx3 && g_fx3->draw_projectile(ren, *tc, world, p, gx, sy, gy, W, H)) continue;
@@ -7364,6 +7364,7 @@ public:
         }
     }
     ~GameScene() override {
+        if(audio_.enabled && audio_.mixer)audio_.mixer->set_paused(false);
         net_teardown();   // NET-PLAY: a live session keeps flushing its EXIT
         if (cmd_rec_) {   // NET L1 --record: the end state the replay must reach
             const std::uint64_t h = sim_state_hash();
@@ -7490,6 +7491,9 @@ public:
     // production, exit handoff, free units, audio events, placement/SW confirm.
     void update(double dt) override {
         menu_.set_mp(net_ != nullptr, mp_can_observe());   // W9-05-06: the MP options / exit pages
+        const bool modal=menu_.open_ || sld_.is_open() || show_briefing_ || gf_abort_.open();
+        if(audio_.enabled && audio_.mixer)audio_.mixer->set_paused(modal);
+        if(!net_ && modal){now_=SDL_GetTicks();return;}
         tooltip_tick(dt);   // W2-UI-07 hover timer (game time)
         touch_bar_tick(dt);   // Keep touch selection mode in sync with the shortcut dock
         touch_hint_tick(dt);  // W4-AM-01: the gesture hint
@@ -8195,6 +8199,7 @@ private:
                  ra2engine::save::from_bytes(*hs, h) && campaign_->restore(h);
         }
         if (ok) {
+            w2_rebind_sw_payloads();
             // G-87: the saved World carries the neutral structures; re-block the
             // dressing's cells (passability is rebuilt from the map on load).
             // W6-04-05: a map wall overlay cell becomes shootable (rules Strength=,

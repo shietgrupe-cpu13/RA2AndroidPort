@@ -9,14 +9,14 @@ namespace ra2engine {
 // Display-only history. Never saved, hashed, or fed back to the simulator.
 class UnitPresentation {
     struct Pose {
-        double x,y,body,turret,ground,altitude;
+        double x,y,body,turret,ground,altitude,pitch;
         int house,cargo,garrison,deck;
         bool alive,dying,frozen;
         std::string image;
     };
     std::vector<Pose> current_, previous_;
     static Pose pose(const Unit& u) {
-        return {u.fx,u.fy,u.body_facing,u.turret_facing,double(u.level+(u.on_deck?4:0)),u.altitude,u.house,u.cargo_of,u.garrison_of,
+        return {u.fx,u.fy,u.body_facing,u.turret_facing,double(u.level+(u.on_deck?4:0)),(u.an.t.missile?u.an.rocket.z:u.altitude),u.an.rocket.pitch,u.house,u.cargo_of,u.garrison_of,
                 u.on_deck,u.alive,u.die_time>=0,u.frozen,u.image};
     }
     static bool continuous(const Pose& a,const Pose& b) {
@@ -30,7 +30,7 @@ public:
         if(id>=previous_.size() || id>=current_.size())return false;
         const auto& a=previous_[id];const auto& b=current_[id];
         return continuous(a,b) && continuous(b,pose(u)) &&
-            (a.x!=b.x || a.y!=b.y || a.body!=b.body || a.turret!=b.turret || a.ground!=b.ground || a.altitude!=b.altitude);
+            (a.x!=b.x || a.y!=b.y || a.body!=b.body || a.turret!=b.turret || a.ground!=b.ground || a.altitude!=b.altitude || a.pitch!=b.pitch);
     }
     std::array<double,2> position(std::size_t id,const Unit& u,double fraction) const {
         if(!moving(id,u))return {u.fx,u.fy};
@@ -56,7 +56,10 @@ public:
         if(!continuous(a,b) || !continuous(b,pose(draw)))return;
         const double t=std::clamp(fraction,0.0,1.0);
         draw.fx=a.x+(b.x-a.x)*t;draw.fy=a.y+(b.y-a.y)*t;
-        draw.altitude=a.altitude+(b.altitude-a.altitude)*t;
+        if(draw.an.t.missile) {
+            draw.an.rocket.z=a.altitude+(b.altitude-a.altitude)*t;
+            draw.an.rocket.pitch=a.pitch+(b.pitch-a.pitch)*t;
+        } else draw.altitude=a.altitude+(b.altitude-a.altitude)*t;
         auto angle=[&](double from,double to){return std::fmod(from+std::remainder(to-from,65536.0)*t+65536.0,65536.0);};
         draw.body_facing=angle(a.body,b.body);draw.turret_facing=angle(a.turret,b.turret);
     }

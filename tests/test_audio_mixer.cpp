@@ -421,3 +421,24 @@ TEST_CASE("mixer: play_scaled scales the gain; volume under 0.05 is inaudible") 
     CHECK(m.sound("S") != nullptr);
     CHECK(m.sound("nope") == nullptr);
 }
+
+TEST_CASE("mixer: pause freezes voices and music in mono and stereo") {
+    struct CountingMusic : MusicSource {
+        int reads=0;
+        std::size_t read(int16_t* out,std::size_t n) override {
+            ++reads;std::fill_n(out,n*2,int16_t{100});return n;
+        }
+    };
+    for(bool stereo:{false,true}) {
+        SoundBank bank;int clip=bank.add({1000,2000,3000});
+        Mixer m(bank,1);m.register_sound("A",plain(clip));REQUIRE(m.play("A"));
+        auto music=std::make_shared<CountingMusic>();m.set_music(music);
+        int16_t out[8]={};
+        auto render=[&](std::size_t n){if(stereo)m.render_stereo(out,n);else m.render(out,n);};
+        render(1);CHECK(out[0]==1100);const int reads=music->reads;
+        m.set_paused(true);CHECK(m.paused());std::fill_n(out,8,int16_t{42});render(4);
+        for(int i=0;i<(stereo?8:4);++i)CHECK(out[i]==0);
+        CHECK(music->reads==reads);CHECK(m.active_voices()==1);
+        m.set_paused(false);render(1);CHECK(out[0]==2100);
+    }
+}

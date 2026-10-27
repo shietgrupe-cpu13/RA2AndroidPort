@@ -766,3 +766,27 @@ TEST_CASE("projectile homing: the MissileROTVar wobble keeps the turn between RO
         CHECK(turned <= 30 * u + 0.03);
     }
 }
+
+#include "save_fields.hpp"
+TEST_CASE("projectile world: elevated flights retain their origin through a save") {
+    ra2assets::MapFile map;
+    auto& cells=const_cast<std::vector<ra2assets::MapCell>&>(map.cells());
+    for(int y=0;y<12;++y)for(int x=0;x<12;++x)cells.push_back({x,y,0,0,static_cast<std::uint8_t>(x<5?4:6)});
+    World w(map);w.enable_projectiles(ProjectileRules{});
+    w.arm_land_speed({}, {}, {});
+    auto gun=cannon_stats();gun.proj.weapon_id="ELEVATED";
+    w.add_combat_unit(2,2,0,gun);w.order_attack_cell(0,6,2);
+    w.step(1.0/15.0);
+    REQUIRE(w.projectiles().size()==1);
+    const auto& p=w.projectiles().front();
+    CHECK(p.terrain_origin_level==4);CHECK(p.tz==208);
+    const auto bytes=save::save_world(w);
+    World restored(map);REQUIRE(save::load_world(restored,bytes));
+    REQUIRE(restored.projectiles().size()==1);
+    CHECK(restored.projectiles()[0].terrain_origin_level==4);
+    CHECK(save::save_world(restored)==bytes);
+    for(int i=0;i<35;++i) {
+        w.step(1.0/15.0);restored.step(1.0/15.0);
+        CHECK(save::save_world(restored)==save::save_world(w));
+    }
+}

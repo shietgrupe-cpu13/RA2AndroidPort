@@ -6553,6 +6553,10 @@ int unit_lz(const Unit& u) {
     if (unit_parachuting(u)) return (u.on_deck ? 416 : 0) + ftol(u.an.para_alt);
     return u.is_aircraft ? ftol(u.altitude) : (u.on_deck ? 416 : 0);
 }
+int unit_lz_in_frame(const Unit& u,int origin) {
+    if(u.an.t.missile)return ftol(u.an.rocket.z)+(u.an.rocket.terrain_origin_level-origin)*104;
+    return unit_lz(u)+(u.level-origin)*104;
+}
 int dist3(int ax, int ay, int az, int bx, int by, int bz) {
     const double dx = ax - bx, dy = ay - by, dz = az - bz;
     return ftol(om::sqrt(dx * dx + dy * dy + dz * dz));
@@ -6591,7 +6595,7 @@ void World::launch_projectile(int attacker, int target_unit, int target_building
     Vec3i tgt;
     if (target_unit >= 0 && target_unit < static_cast<int>(units_.size())) {
         const Unit& v = units_[target_unit];
-        tgt = Vec3i{unit_lx(v), unit_ly(v), unit_lz(v)};
+        tgt = Vec3i{unit_lx(v), unit_ly(v), unit_lz_in_frame(v,u.level)};
     } else if (target_building >= 0 && target_building < static_cast<int>(buildings_.size())) {
         const Building& b = buildings_[target_building];
         double best = -1.0;
@@ -6601,9 +6605,9 @@ void World::launch_projectile(int attacker, int target_unit, int target_building
             const double d = om::hypot(dx, dy);
             if (best < 0.0 || d < best) { best = d; nx = c.x; ny = c.y; }
         }
-        tgt = Vec3i{nx * 256, ny * 256, 0};
+        tgt = Vec3i{nx * 256, ny * 256, (cell_level(nx,ny)-u.level)*104};
     } else if (cell_x >= 0 && cell_y >= 0) {
-        tgt = Vec3i{cell_x * 256, cell_y * 256, deck_z(cell_x,cell_y)-cell_level(cell_x,cell_y)*104};
+        tgt = Vec3i{cell_x * 256, cell_y * 256, deck_z(cell_x,cell_y)-u.level*104};
     } else {
         return;
     }
@@ -6662,6 +6666,7 @@ void World::launch_projectile(int attacker, int target_unit, int target_building
     p.target_unit = target_unit;
     p.target_building = target_building;
     p.x = src.x; p.y = src.y; p.z = src.z;
+    p.terrain_origin_level=u.level;
     p.vx = lr.vx; p.vy = lr.vy; p.vz = lr.vz;
     p.tx = tgt.x; p.ty = tgt.y; p.tz = tgt.z;
     p.speed_cap = spec.speed_cap;
@@ -6717,13 +6722,13 @@ bool World::homing_target(Projectile& p, Vec3i& out) const {
     if (p.target_unit >= 0 && p.target_unit < static_cast<int>(units_.size())) {
         const Unit& t = units_[p.target_unit];
         if (!t.alive || t.die_time >= 0.0 || !unit_combat_exposed(t)) return false;
-        out = Vec3i{unit_lx(t), unit_ly(t), unit_lz(t)};
+        out = Vec3i{unit_lx(t), unit_ly(t), unit_lz_in_frame(t,p.terrain_origin_level)};
         return true;
     }
     if (p.target_building >= 0 && p.target_building < static_cast<int>(buildings_.size())) {
         const Building& b = buildings_[p.target_building];
         if (!b.alive || b.state == Building::State::Dead) return false;
-        out = Vec3i{p.tx, p.ty, 0};   // the foundation cell aimed at launch
+        out = Vec3i{p.tx, p.ty, (cell_level(lepton_to_cell(p.tx),lepton_to_cell(p.ty))-p.terrain_origin_level)*104};   // the foundation cell aimed at launch
         return true;
     }
     if (p.target_unit < 0 && p.target_building < 0 && !p.target_air) {
@@ -6759,7 +6764,7 @@ void World::step_projectiles_frame() {
             cell_head[c] = j;
         }
     }
-    const HomingRules hr{proj_rules_.rot_var, proj_rules_.safety_altitude};
+    HomingRules hr{proj_rules_.rot_var, proj_rules_.safety_altitude};
     for (Projectile p : flying) {
         if (p.kind == ProjKind::Homing) {
             // W4: the homing branch (FUN_004666D0 ROT>=1 + FUN_005B1B20).
@@ -6769,7 +6774,10 @@ void World::step_projectiles_frame() {
             } else if (!p.lost && p.target_air) {
                 p.lost = true;   // an air target died: climb out to MissileSafetyAltitude
             }
-            const int r = integrate_homing(p, Vec3i{p.tx, p.ty, p.tz}, proj_frame_, hr);
+            hr.ground_z=(cell_level(lepton_to_cell(p.x),lepton_to_cell(p.y))-p.terrain_origin_level)*104;
+            int r = integrate_homing(p, Vec3i{p.tx, p.ty, p.tz}, proj_frame_, hr);
+            const int floor=(cell_level(lepton_to_cell(p.x),lepton_to_cell(p.y))-p.terrain_origin_level)*104;
+            if(!p.level && p.z<floor){p.z=floor;r=2;}
             const int hcx = lepton_to_cell(p.x), hcy = lepton_to_cell(p.y);
             const int age = proj_frame_ - p.launch_frame;
             const bool off_map = grid_w_ > 0 && grid_h_ > 0 &&
@@ -6786,7 +6794,7 @@ void World::step_projectiles_frame() {
                 continue;
             }
             if (r != 0) {
-                if (p.z < 0) p.z = 0;
+                if (p.z < floor) p.z = floor;
                 int victim = -1;
                 if (r == 1 && p.target_unit >= 0 && p.target_unit < static_cast<int>(units_.size()) &&
                     units_[p.target_unit].alive && units_[p.target_unit].die_time < 0.0)
@@ -6803,6 +6811,7 @@ void World::step_projectiles_frame() {
             integrate_ballistic(p, proj_rules_.gravity);
 
         const int cx = lepton_to_cell(p.x), cy = lepton_to_cell(p.y);
+        const int floor=(cell_level(cx,cy)-p.terrain_origin_level)*104;
         int owner_house =
             (p.attacker >= 0 && p.attacker < static_cast<int>(units_.size())) ? units_[p.attacker].house
                                                                                : -1;
@@ -6840,10 +6849,10 @@ void World::step_projectiles_frame() {
         int victim = -1;
         if (p.kind == ProjKind::Ballistic) {
             // §7 ground impact (floor = 0, the flat combat plane, §11.6; §12.5).
-            if (p.z < 0) {
+            if (p.z < floor) {
                 det = true;
-                p.z = 0;
-            } else if (p.z < kGroundObjectBand) {
+                p.z = floor;
+            } else if (p.z-floor < kGroundObjectBand) {
                 // §12.2: within 150 above the floor over a non-owner, non-allied
                 // object in the cell -> detonate.
                 const int j = first_unit_in_cell();
@@ -6862,14 +6871,14 @@ void World::step_projectiles_frame() {
             // §6.2: Vertical ends above DetonationAltitude or below the ground.
             if (p.detonation_altitude > 0 && p.z > p.detonation_altitude) {
                 det = true;
-            } else if (p.z < 0) {
+            } else if (p.z < floor) {
                 det = true;
-                p.z = 0;
+                p.z = floor;
             }
         }
         // §7 arrival: in the TRUE target's cell (§12.4) and below 2*LevelHeight.
         if (!det && p.kind == ProjKind::Ballistic && cx == lepton_to_cell(p.tx) &&
-            cy == lepton_to_cell(p.ty) && p.z < kArrivalHeight)
+            cy == lepton_to_cell(p.ty) && p.z-p.tz < kArrivalHeight)
             det = true;
         // §5.4/§7 collision: the cell's first object, hostile, within 127 (3-D)
         // -> detonate, snapping onto it unless Inaccurate.
@@ -6877,10 +6886,10 @@ void World::step_projectiles_frame() {
             const int j = first_unit_in_cell();
             if (j >= 0 && hostile(j)) {
                 const Unit& w = units_[j];
-                if (dist3(p.x, p.y, p.z, unit_lx(w), unit_ly(w), unit_lz(w)) <= kCollisionRadius) {
+                if (dist3(p.x, p.y, p.z, unit_lx(w), unit_ly(w), unit_lz_in_frame(w,p.terrain_origin_level)) <= kCollisionRadius) {
                     det = true;
                     victim = j;
-                    if (!p.inaccurate) { p.x = unit_lx(w); p.y = unit_ly(w); p.z = unit_lz(w); }
+                    if (!p.inaccurate) { p.x = unit_lx(w); p.y = unit_ly(w); p.z = unit_lz_in_frame(w,p.terrain_origin_level); }
                 }
             }
         }
@@ -6903,10 +6912,10 @@ void World::step_projectiles_frame() {
         // §7 out of speed: |V| < 8 (sampled pre-gravity), or |V| < 10 and height <= 9.
         if (!det && p.kind == ProjKind::Ballistic) {
             const double mag = om::sqrt(p.vx * p.vx + p.vy * p.vy + p.vz * p.vz);
-            if (p.slow || (mag < kRestSpeed && p.z <= 9)) det = true;
+            if (p.slow || (mag < kRestSpeed && p.z-floor <= 9)) det = true;
         }
         // §12.2 IsBlocked: height <= -4*LevelHeight.
-        if (!det && p.z <= kBlockedHeight) det = true;
+        if (!det && p.z-floor <= kBlockedHeight) det = true;
 
         if (det) {
             detonate_projectile(p, victim);
@@ -6924,8 +6933,8 @@ void World::detonate_projectile(Projectile& p, int victim) {
     if (!p.inaccurate && p.target_unit >= 0 && p.target_unit < static_cast<int>(units_.size())) {
         const Unit& t = units_[p.target_unit];
         if (t.alive && t.die_time < 0.0 &&
-            dist3(ix, iy, iz, unit_lx(t), unit_ly(t), unit_lz(t)) <= kSnapRadius) {
-            ix = unit_lx(t); iy = unit_ly(t); iz = unit_lz(t);
+            dist3(ix, iy, iz, unit_lx(t), unit_ly(t), unit_lz_in_frame(t,p.terrain_origin_level)) <= kSnapRadius) {
+            ix = unit_lx(t); iy = unit_ly(t); iz = unit_lz_in_frame(t,p.terrain_origin_level);
         }
         // W5-B [RE: BulletClass::Update tail @0x467D60..0x467E3E -- the
         // "close enough" re-aim]: a non-Inaccurate, non-Airburst shell whose
@@ -6937,8 +6946,8 @@ void World::detonate_projectile(Projectile& p, int victim) {
                  lepton_to_cell(unit_lx(t)) == lepton_to_cell(ix) &&
                  lepton_to_cell(unit_ly(t)) == lepton_to_cell(iy)) {
             const double lim = std::max(2.0 * p.speed, 128.0);
-            if (dist3(ix, iy, iz, unit_lx(t), unit_ly(t), unit_lz(t)) / 3 <= lim) {
-                ix = unit_lx(t); iy = unit_ly(t); iz = unit_lz(t);
+            if (dist3(ix, iy, iz, unit_lx(t), unit_ly(t), unit_lz_in_frame(t,p.terrain_origin_level)) / 3 <= lim) {
+                ix = unit_lx(t); iy = unit_ly(t); iz = unit_lz_in_frame(t,p.terrain_origin_level);
             }
         }
     }
@@ -6948,7 +6957,7 @@ void World::detonate_projectile(Projectile& p, int victim) {
     ev.kind = ProjectileEvent::Detonate;
     ev.frame = proj_frame_;
     ev.attacker = p.attacker;
-    ev.x = ix; ev.y = iy; ev.z = iz;
+    ev.x = ix; ev.y = iy; ev.z = iz+(p.terrain_origin_level-cell_level(icx,icy))*104;
     ev.flight_frames = proj_frame_ - p.launch_frame;
     ev.apex = p.max_z;
 
@@ -6969,7 +6978,7 @@ void World::detonate_projectile(Projectile& p, int victim) {
     // its impact point -- the target (snapped within 32 leptons), bystanders,
     // own/allied units and buildings in the CellSpread alike. The projectile Z
     // is terrain-relative; the applicator's is absolute (level*104 added).
-    const int impact_z = iz + cell_level(icx, icy) * 104;
+    const int impact_z = iz + p.terrain_origin_level * 104;
     const int tb = (p.target_building >= 0 && p.target_building < static_cast<int>(buildings_.size()))
                        ? p.target_building : -1;
     const int tb_before = tb >= 0 ? buildings_[tb].hp : 0;
@@ -7015,7 +7024,7 @@ void World::detonate_projectile(Projectile& p, int victim) {
         if (p.target_unit >= 0 && p.target_unit < static_cast<int>(units_.size())) {
             const Unit& t = units_[static_cast<std::size_t>(p.target_unit)];
             if (t.on_deck && t.cell_x == icx && t.cell_y == icy)
-                bz = std::max(bz, deck_z(icx, icy) + unit_lz(t));
+                bz = std::max(bz, p.terrain_origin_level*104 + unit_lz_in_frame(t,p.terrain_origin_level));
         }
         if (p.attacker >= 0 && p.attacker < static_cast<int>(units_.size())) {
             const Unit& att = units_[p.attacker];

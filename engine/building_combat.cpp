@@ -210,6 +210,7 @@ void World::launch_defense_projectile(int b_idx, int target_unit, int slot, int 
     const int burst=std::max(1,defense_weapon(btypes()[b.type],b,slot).burst);
     const int shot=(b.w6.burst_index+burst-1)%burst;
     const double lateral=spec.flh[1]*(shot&1?-1.0:1.0);
+    const int origin=cell_level(b.cx,b.cy);
     const Vec3i muzzle{ftol(bcenter_x(b)*kLept+spec.flh[0]*dx+lateral*dy),
         ftol(bcenter_y(b)*kLept+spec.flh[0]*dy-lateral*dx),
         spec.flh[2]>0?spec.flh[2]:(spec.kind==ProjKind::Homing?100:0)};
@@ -222,7 +223,7 @@ void World::launch_defense_projectile(int b_idx, int target_unit, int slot, int 
             ox=b.attack_order_x*256;oy=b.attack_order_y*256;
         } else return;
         const Vec3i src0=muzzle;
-        const Vec3i tgt0{ox, oy, 0};
+        const Vec3i tgt0{ox, oy, deck_z(lepton_to_cell(ox),lepton_to_cell(oy))-origin*104};
         const LaunchResult lr0 = compute_launch(spec, proj_rules_, src0, tgt0, proj_rng_);
         ProjectileEvent ev0;
         ev0.frame = proj_frame_;
@@ -241,6 +242,7 @@ void World::launch_defense_projectile(int b_idx, int target_unit, int slot, int 
         p.attacker_building = b_idx;
         p.weapon_slot = slot;
         p.target_building = target_building;
+        p.terrain_origin_level=origin;
         p.x = src0.x; p.y = src0.y; p.z = src0.z;
         p.vx = lr0.vx; p.vy = lr0.vy; p.vz = lr0.vz;
         p.tx = tgt0.x; p.ty = tgt0.y; p.tz = tgt0.z;
@@ -262,8 +264,9 @@ void World::launch_defense_projectile(int b_idx, int target_unit, int slot, int 
     // a homing bullet launched at height 0 would fail its height < 1 test.]
     const Vec3i src=muzzle;
     const Vec3i tgt{ftol(v.fx * kLept), ftol(v.fy * kLept),
-                    unit_parachuting(v) ? (v.on_deck ? 416 : 0) + ftol(v.an.para_alt) :
-                    (v.is_aircraft ? ftol(v.altitude) : (v.on_deck ? 416 : 0))};
+                    v.an.t.missile ? ftol(v.an.rocket.z)+(v.an.rocket.terrain_origin_level-origin)*104 :
+                    (v.level-origin)*104+(unit_parachuting(v) ? (v.on_deck ? 416 : 0) + ftol(v.an.para_alt) :
+                    (v.is_aircraft ? ftol(v.altitude) : (v.on_deck ? 416 : 0)))};
     const LaunchResult lr = compute_launch(spec, proj_rules_, src, tgt, proj_rng_);
     ProjectileEvent ev;
     ev.frame = proj_frame_;
@@ -286,6 +289,7 @@ void World::launch_defense_projectile(int b_idx, int target_unit, int slot, int 
     p.attacker_building = b_idx;
     p.weapon_slot = slot;
     p.target_unit = target_unit;
+    p.terrain_origin_level=origin;
     p.x = src.x; p.y = src.y; p.z = src.z;
     p.vx = lr.vx; p.vy = lr.vy; p.vz = lr.vz;
     p.tx = tgt.x; p.ty = tgt.y; p.tz = tgt.z;

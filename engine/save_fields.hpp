@@ -353,35 +353,69 @@ struct SaveAccess {
         save::io_unhashed(ar, w.crush_grid_); save::mark(ar, "crush_grid_");  // P4 derived scratch (the amphib_passable_ precedent)
         save::io_unhashed(ar, w.crush_leak_); save::mark(ar, "crush_leak_");  // W9-05: crush_grid()/crush_leak() rebuild them
         save::io(ar, w.sw_quarry_); save::mark(ar, "sw_quarry_");   // W5-A AI SW PreferredTarget (save v21)
+        const bool height_extension=
+            (w.terrain_armed() && (!w.projectiles_.empty() ||
+                std::any_of(w.units_.begin(),w.units_.end(),[](const auto& u){return u.an.t.missile;}))) ||
+            std::any_of(w.projectiles_.begin(),w.projectiles_.end(),[](const auto& p){return p.terrain_origin_level!=0;}) ||
+            std::any_of(w.units_.begin(),w.units_.end(),[](const auto& u){return u.an.rocket.terrain_origin_level!=0;});
         // v56 append-only extension. An old v55 World ends precisely here;
         // keep freshly configured rules, but never retain links from a prior
         // session when migrating it. Other section layouts are unchanged.
         if constexpr(Ar::kLoading) {
             if(ar.at_end())w.drain_.links.clear();
             else save::io(ar,w.drain_);
-        } else if(w.drain_.enabled || w.chaos_.enabled || w.disk_.enabled || !w.waypoint_routes_.empty() || !w.spawn_launch_profiles_.empty())save::io(ar,w.drain_);
+        } else if(w.drain_.enabled || w.chaos_.enabled || w.disk_.enabled || !w.waypoint_routes_.empty() || !w.spawn_launch_profiles_.empty() || height_extension)save::io(ar,w.drain_);
         save::mark(ar,"drain_");
         // v57 adds the temporary status owner after the intact v55/v56 payload.
         if constexpr(Ar::kLoading) {
             if(ar.at_end()) {w.chaos_.active.clear();w.chaos_.pending.clear();}
             else save::io(ar,w.chaos_);
-        } else if(w.chaos_.enabled || w.disk_.enabled || !w.waypoint_routes_.empty() || !w.spawn_launch_profiles_.empty())save::io(ar,w.chaos_);
+        } else if(w.chaos_.enabled || w.disk_.enabled || !w.waypoint_routes_.empty() || !w.spawn_launch_profiles_.empty() || height_extension)save::io(ar,w.chaos_);
         save::mark(ar,"chaos_");
         if constexpr(Ar::kLoading) {
             if(ar.at_end()) {w.disk_.shots.clear();w.disk_.events.clear();}
             else save::io(ar,w.disk_);
-        } else if(w.disk_.enabled || !w.waypoint_routes_.empty() || !w.spawn_launch_profiles_.empty())save::io(ar,w.disk_);
+        } else if(w.disk_.enabled || !w.waypoint_routes_.empty() || !w.spawn_launch_profiles_.empty() || height_extension)save::io(ar,w.disk_);
         save::mark(ar,"disk_");
         // v60 append-only tail. Empty extensions retain old inert-world hashes.
         bool extension=false;
         if constexpr(Ar::kLoading) {
             extension=!ar.at_end();
             if(!extension) {w.waypoint_routes_.clear();w.spawn_launch_profiles_.clear();}
-        } else extension=!w.waypoint_routes_.empty() || !w.spawn_launch_profiles_.empty();
+        } else extension=!w.waypoint_routes_.empty() || !w.spawn_launch_profiles_.empty() || height_extension;
         if(extension)save::io(ar,w.waypoint_routes_);
         save::mark(ar,"waypoint_routes_");
         if(extension)save::io(ar,w.spawn_launch_profiles_);
         save::mark(ar,"spawn_launch_profiles_");
+        // v61 keeps older inline layouts intact: origins live in a bounded tail.
+        bool heights=height_extension;
+        if constexpr(Ar::kLoading)heights=!ar.at_end();
+        if(heights) {
+            std::vector<int> bullets,rockets;
+            if constexpr(!Ar::kLoading) {
+                for(const auto& p:w.projectiles_)bullets.push_back(p.terrain_origin_level);
+                for(const auto& u:w.units_)rockets.push_back(u.an.rocket.terrain_origin_level);
+            }
+            save::io(ar,bullets);save::io(ar,rockets);
+            if constexpr(Ar::kLoading) {
+                if(bullets.size()!=w.projectiles_.size() || rockets.size()!=w.units_.size()) {ar.fail();return;}
+                for(int level:bullets)if(level<0 || level>255){ar.fail();return;}
+                for(int level:rockets)if(level<0 || level>255){ar.fail();return;}
+                for(std::size_t i=0;i<bullets.size();++i)w.projectiles_[i].terrain_origin_level=bullets[i];
+                for(std::size_t i=0;i<rockets.size();++i)w.units_[i].an.rocket.terrain_origin_level=rockets[i];
+            }
+        } else if constexpr(Ar::kLoading) {
+            // Older flights used the terrain cell beneath them as their origin.
+            for(auto& p:w.projectiles_) {
+                p.terrain_origin_level=w.cell_level(lepton_to_cell(p.x),lepton_to_cell(p.y));
+                p.tz+=(w.cell_level(lepton_to_cell(p.tx),lepton_to_cell(p.ty))-p.terrain_origin_level)*104;
+            }
+            for(auto& u:w.units_)if(u.an.t.missile) {
+                auto& f=u.an.rocket;f.terrain_origin_level=u.level;
+                f.tz+=(w.cell_level(lepton_to_cell(static_cast<int>(f.tx)),lepton_to_cell(static_cast<int>(f.ty)))-u.level)*104;
+            }
+        }
+        save::mark(ar,"flight_height_origins");
     }
 
     // --- MapTriggerSystem: every member except d_ (the parsed map data, a
@@ -536,6 +570,8 @@ template <class Ar> void fields(Ar& ar, RocketBlock& v) {   // W4 (v15)
 }
 template <class Ar> void fields(Ar& ar, RocketParams& v) { io(ar, v.block); io(ar, v.type_id); }   // W4 (v15)
 template <class Ar> void fields(Ar& ar, RocketFlight& v) {   // W4 (v15)
+    // Serialized in the World v61 tail to preserve old inline layouts.
+    if constexpr(std::is_same_v<Ar,Counter>)io(ar,v.terrain_origin_level);
     io(ar, v.phase); io(ar, v.timer); io(ar, v.pitch); io(ar, v.speed); io(ar, v.horiz0);
     io(ar, v.x); io(ar, v.y); io(ar, v.z); io(ar, v.yaw); io(ar, v.frames);
     io(ar, v.tx); io(ar, v.ty); io(ar, v.tz);
@@ -609,6 +645,7 @@ template <class Ar> void fields(Ar& ar, ProjectileSpec& v) {
     io(ar, v.subject_to_walls);
 }
 template <class Ar> void fields(Ar& ar, Projectile& v) {
+    if constexpr(std::is_same_v<Ar,Counter>)io(ar,v.terrain_origin_level);
     io(ar, v.weapon_id);
     io(ar, v.kind);
     io(ar, v.attacker);

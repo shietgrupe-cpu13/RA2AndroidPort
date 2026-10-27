@@ -1701,3 +1701,14 @@ TEST_CASE("bridge engineer roles: all faction engineers repair a destroyed span 
   CHECK(w.bridge_cells_destroyed()==0);CHECK_FALSE(w.units()[0].alive);CHECK(w.buildings()[b].house==3);
  }
 }
+
+TEST_CASE("Yuri superweapons: refreshed reveal radius preserves a ready charge") {
+    Rig r;World w(r.map);std::array<int,11> verses{};verses.fill(100);
+    w.set_house(0,{World::Side::Soviet,0,"Player",0,true});w.enable_shroud(true);
+    w.grant_superweapon_type(0,SuperweaponType::PsychicReveal,0,false,0,1,0,verses);
+    w.step(1.0/15.0);REQUIRE(w.sw_ready(0,SuperweaponType::PsychicReveal));
+    w.grant_superweapon_type(0,SuperweaponType::PsychicReveal,10,false,0,4,0,verses);
+    CHECK(w.sw_ready(0,SuperweaponType::PsychicReveal));
+    REQUIRE(w.fire_superweapon_at(0,SuperweaponType::PsychicReveal,10,10));
+    CHECK(w.explored_at(0,13,10));
+}

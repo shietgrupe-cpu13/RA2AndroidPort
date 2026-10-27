@@ -93,6 +93,7 @@ enum RocketPhase : int {
     kRocketDive = 5,    // pitch turns at the target by TurnRate per frame
 };
 struct RocketFlight {
+    int terrain_origin_level = 0; // fixed launch terrain reference; World v61 tail
     int phase = kRocketPause;
     int timer = 0;            // frames left in the pause / tilt
     double pitch = 0.0;       // radians, + = nose up

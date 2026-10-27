@@ -95,6 +95,7 @@ struct Projectile {
     ProjKind kind = ProjKind::Ballistic;
     int attacker = -1;          // firing unit index (stats read at detonation)
     int target_unit = -1;       // target unit index, or -1
+    int terrain_origin_level = 0; // fixed launch terrain reference; World v61 tail
     int target_building = -1;   // target building index, or -1
     int x = 0, y = 0, z = 0;    // position, integer leptons
     double vx = 0.0, vy = 0.0, vz = 0.0;  // velocity, leptons/frame
@@ -210,6 +211,7 @@ void integrate_vertical(Projectile& p);
 struct HomingRules {
     double rot_var = 0.25;          // [General] MissileROTVar (Rules+0x598)
     int safety_altitude = 750;      // [General] MissileSafetyAltitude (Rules+0x5A0)
+    int ground_z = 0;              // terrain floor in this flight's fixed reference frame
 };
 int integrate_homing(Projectile& p, const Vec3i& tgt, int frame, const HomingRules& hr);
 

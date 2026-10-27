@@ -148,7 +148,7 @@ namespace {
 bool nose_contact(const RocketBlock& b, const RocketFlight& f, double tz) {
     double nx = 0, ny = 0, nz = 0;
     rocket_nose(b, f, nx, ny, nz);
-    return ftol_i(nz) <= ftol_i(tz) || f.z < 1.0;
+    return ftol_i(nz) <= ftol_i(tz) || f.z < std::min(1.0,tz+1.0);
 }
 }  // namespace
 

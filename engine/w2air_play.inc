@@ -379,6 +379,17 @@
                   << "+" << infantry_ids.size() << "\n";
     }
 
+    // Old saves replace the configured World's type registry. Rebind missing
+    // payload definitions without resetting charge, units, timers or commands.
+    void w2_rebind_sw_payloads() {
+        bool genetic=world_.sw_state(local_house_,ra2engine::SuperweaponType::GeneticConverter)!=nullptr;
+        for(const auto& grant:rp_sw_table_)genetic|=grant.type==ra2engine::SuperweaponType::GeneticConverter;
+        if(genetic && !world_.has_an_type("BRUTE")) {
+            auto resolved=resolve_combat_unit(rules_,"BRUTE");
+            if(!resolved.combat.image.empty())world_.register_an_type("BRUTE",resolved.combat);
+        }
+    }
+
     // Sidebar SW slot clicked (READY): arm that SW's targeting.
     void w2_arm_sw(ra2engine::SuperweaponType t) {
         w2_armed_ = static_cast<int>(t);

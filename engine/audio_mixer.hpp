@@ -125,6 +125,9 @@ private:
 class Mixer {
 public:
     static constexpr int kMaxVoices = 16;
+    // Freeze sample cursors, queued speech and streamed music while a modal game page is open.
+    void set_paused(bool paused);
+    bool paused() const;
     using Bus = AudioBus;
 
     // [P8] Per-bus gain in permille (0..1000, clamped). Defaults to 1000 on
@@ -252,6 +255,7 @@ private:
     bool next_sample_(Voice& v, int& sample);
     void retire_();
 
+    bool paused_ = false;
     const SoundBank& bank_;
     std::map<std::string, MixerSound> sounds_;
     std::vector<Voice> voices_;

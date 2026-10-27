@@ -293,7 +293,7 @@ int integrate_homing(Projectile& p, const Vec3i& tgt, int frame, const HomingRul
             int levels = ftol(d3) / 256;
             if (p.airburst || p.very_high) levels = 10;
             else if (levels > 4) levels = 5;
-            const int err = p.z - levels * kLevelHeight;
+            const int err = p.z - hr.ground_z - levels * kLevelHeight;
             if (err < -20) p.z += 18;
             else if (err > 20) p.z -= 18;
             double want = 0.0;                                // level 0x4000
@@ -315,9 +315,9 @@ int integrate_homing(Projectile& p, const Vec3i& tgt, int frame, const HomingRul
     int result = 0;
     // [RE-FALLBACK: a Level bullet (torpedo) runs on the water line, z = 0 in
     // the clone's flat plane, so the height < 1 test is skipped for it.]
-    if (!p.lost && (dist <= p.speed * 0.5 || (p.z < 1 && !p.level)))
-        result = ((p.z > 0 || p.level) && !p.airburst) ? 1 : 2;
-    if (p.lost && p.target_air && p.z >= hr.safety_altitude) result = 2;   // Rules+0x5A0
+    if (!p.lost && (dist <= p.speed * 0.5 || (p.z < hr.ground_z+1 && !p.level)))
+        result = ((p.z > hr.ground_z || p.level) && !p.airburst) ? 1 : 2;
+    if (p.lost && p.target_air && p.z >= hr.ground_z+hr.safety_altitude) result = 2;   // Rules+0x5A0
     // Give-up: 60 frames of closing samples, then a decaying average
     // (0x7E38E8 = 0.98333); not closing (0 <= avg < 60) -> detonate.
     if (result == 0 && !p.locked && !p.lost && p.prev_dist >= 0) {
@@ -339,7 +339,7 @@ int integrate_homing(Projectile& p, const Vec3i& tgt, int frame, const HomingRul
         p.x = ftol(static_cast<double>(p.x) + p.vx);
         p.y = ftol(static_cast<double>(p.y) + p.vy);
         p.z = ftol(static_cast<double>(p.z) + p.vz);
-        if (p.z < 0 && !p.level) result = 2;   // into the ground
+        if (p.z < hr.ground_z && !p.level) result = 2;   // into the ground
     }
     p.max_z = std::max(p.max_z, p.z);
     return result;

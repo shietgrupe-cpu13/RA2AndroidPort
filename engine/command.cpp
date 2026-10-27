@@ -442,7 +442,8 @@ void apply_command(World& w, const Command& c, CommandHost* host) {
             if (host) host->abandon_all(H, c.rtti_type, c.heap_id, c.is_naval != 0);
             return;
         case EventType::SpecialPlace:
-            (void)w.fire_superweapon_at(H, static_cast<SuperweaponType>(c.value), c.cx, c.cy, c.cx2, c.cy2);
+            {const bool accepted=w.fire_superweapon_at(H, static_cast<SuperweaponType>(c.value), c.cx, c.cy, c.cx2, c.cy2);
+             diag::note("POWER_FIRE house=%d type=%d cell=%d,%d accepted=%d brute_registered=%d",H,c.value,c.cx,c.cy,accepted,w.has_an_type("BRUTE"));}
             return;
         case EventType::Ally: {
             // W9-05-03 [RE: EventClass::Execute FUN_004C6BD0 case 3: the

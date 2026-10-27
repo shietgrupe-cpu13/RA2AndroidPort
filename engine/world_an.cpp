@@ -285,11 +285,11 @@ void World::rocket_explode(int i, int end) {
     u.an.rocket_end = end;
     u.fx = nx / kLept;
     u.fy = ny / kLept;
-    u.altitude = std::max(0.0, nz);
+    u.altitude = std::max(0.0,nz+(u.an.rocket.terrain_origin_level-cell_level(static_cast<int>(om::lround(u.fx)),static_cast<int>(om::lround(u.fy))))*104);
     const int house = u.house;
     if (end == 1)
         an_area_damage(house, nx / kLept, ny / kLept, rocket_damage(blk, u.an.rocket_elite), wh.spread,
-                       wh.pmax, wh.verses, /*hit_air=*/false, /*spare_house=*/false, std::max(0.0, nz),
+                       wh.pmax, wh.verses, /*hit_air=*/false, /*spare_house=*/false, std::max(0.0,nz+(u.an.rocket.terrain_origin_level-cell_level(static_cast<int>(om::lround(nx/kLept)),static_cast<int>(om::lround(ny/kLept))))*104),
                        wh.wall_flags);   // W6-04-04 (V3WH / DMISLWH: Wall + Wood)
     if (end == 1) {
         // W8-05-04 / W8-04-03 [RE: FUN_00662A70 @0x662D07 -> DamageArea
@@ -297,11 +297,11 @@ void World::rocket_explode(int i, int end) {
         // bridge in its cell; Z is the nose height (the deck height when it
         // bursts on a target standing on a deck).
         const int bx = static_cast<int>(om::lround(nx / kLept)), by = static_cast<int>(om::lround(ny / kLept));
-        int bz = cell_level(bx, by) * 104 + static_cast<int>(std::max(0.0, nz));
+        int bz = u.an.rocket.terrain_origin_level * 104 + static_cast<int>(nz);
         const int tg = units_[i].target;
         if (tg >= 0 && tg < static_cast<int>(units_.size()) && units_[static_cast<std::size_t>(tg)].on_deck &&
             units_[static_cast<std::size_t>(tg)].cell_x == bx && units_[static_cast<std::size_t>(tg)].cell_y == by)
-            bz = std::max(bz, deck_z(bx, by) + static_cast<int>(std::max(0.0, nz)));
+            bz = std::max(bz, deck_z(bx, by));
         bridge_area_roll(nx / kLept, ny / kLept, rocket_damage(blk, u.an.rocket_elite), wh.wall_flags, bz);
     }
     Unit& r = units_[i];   // (an_area_damage never reallocates units_; re-fetch anyway)
@@ -420,8 +420,10 @@ void World::an_spawn_launch(int i, int k) {
         s.fx=own.fx+(f*dx+l*dy)/kLept;
         s.fy=own.fy+(f*dy-l*dx)/kLept;
         // Unbound test/legacy types retain the historical deck height.
-        const double launch_z=profile!=spawn_launch_profiles_.end() ? h : kRocketDeckZ;
+        const double launch_z=(profile!=spawn_launch_profiles_.end() ? h : kRocketDeckZ)+(own.on_deck?416.0:0.0);
+        gz+=(cell_level(static_cast<int>(om::lround(gx)),static_cast<int>(om::lround(gy)))-own.level)*104;
         rocket_launch(blk, s.an.rocket, s.fx * kLept, s.fy * kLept, launch_z, gx * kLept, gy * kLept);
+        s.an.rocket.terrain_origin_level=own.level;
         if(p.decloak && own.an.t.underwater && own.an.t.cloakable) {
             own.an.submerged=false;
             own.an.surface_left_frames=std::max(own.an.surface_left_frames,an_.sw.cloak_delay_frames);
@@ -639,7 +641,7 @@ void World::an_spawn_tick(int i) {
                 // the block's PauseFrames + TiltFrames (Rules+0x4B0/0x4B4 for
                 // the V3 type, else the DMisl block +0x4E4/0x4E8).
                 any_missile = true;
-                const int kind = (su >= 0 && units_[static_cast<std::size_t>(su)].an.t.rocket_kind == 0) ? 0 : 1;
+                const int kind = su>=0 ? std::clamp(units_[static_cast<std::size_t>(su)].an.t.rocket_kind,0,2) : kRocketDMisl;
                 const RocketBlock& blk = an_.sw.rockets.block[static_cast<std::size_t>(kind)];
                 M().sp_state[K] = kSpawnRocketWait;
                 M().sp_timer[K] = std::max(0, blk.pause_frames + blk.tilt_frames);
@@ -797,12 +799,14 @@ void World::an_step_fixed_wing(double dt) {
             (void)have_goal;
             const RocketBlock& blk = P.rockets.block[static_cast<std::size_t>(
                 std::clamp(u.an.t.rocket_kind < 0 ? 1 : u.an.t.rocket_kind, 0, 2))];
-            const int r = rocket_step(blk, u.an.t.rocket_speed, f, f.tx, f.ty, f.tz,u.an.t.rocket_kind==kRocketCMisl);
+            int r = rocket_step(blk, u.an.t.rocket_speed, f, f.tx, f.ty, f.tz,u.an.t.rocket_kind==kRocketCMisl);
             u.fx = f.x / kLept;
             u.fy = f.y / kLept;
-            u.altitude = std::max(0.0, f.z);
+            u.altitude = std::max(0.0, f.z+(f.terrain_origin_level-cell_level(static_cast<int>(om::lround(u.fx)),static_cast<int>(om::lround(u.fy))))*104);
             u.cell_x = std::max(0, std::min(grid_w_ - 1, static_cast<int>(om::lround(u.fx))));
             u.cell_y = std::max(0, std::min(grid_h_ - 1, static_cast<int>(om::lround(u.fy))));
+            const double floor=(cell_level(u.cell_x,u.cell_y)-f.terrain_origin_level)*104.0;
+            if(f.phase>=kRocketClimb && f.z<floor){f.z=floor;r=kRocketDetonate;}
             u.body_facing = facing_u16_from_delta(om::cos(f.yaw), om::sin(f.yaw));
             u.flight_state = f.phase >= kRocketClimb ? FlightState::Cruising : FlightState::TakingOff;
             const bool off_map = grid_w_ > 0 && grid_h_ > 0 &&

@@ -104,7 +104,12 @@ void World::grant_superweapon_type(int house, SuperweaponType type, double recha
                                    const std::array<int, 11>& verses) {
     if (house < 0 || type == SuperweaponType::None) return;
     if (sw_rec(house, type)) {   // already held: keep its charge
-        sw_rec(house, type)->is_powered = is_powered;
+        auto* rec=sw_rec(house,type);
+        rec->is_powered = is_powered;
+        if(type==SuperweaponType::PsychicDominator || type==SuperweaponType::GeneticConverter || type==SuperweaponType::PsychicReveal) {
+            rec->eff_damage=dmg;rec->eff_cell_spread=cell_spread;
+            rec->eff_percent_at_max=pmax;rec->eff_verses=verses;
+        }
         return;
     }
     grant_superweapon(house, type, recharge_secs, dmg, cell_spread, pmax, verses);
