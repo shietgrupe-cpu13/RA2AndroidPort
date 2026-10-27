@@ -1,4 +1,5 @@
 #include "maplist.hpp"
+#include "ra2assets/mod_profile.hpp"
 #include "ra2assets/pkt.hpp"
 #include "ra2assets/fileio.hpp"
 #include <algorithm>
@@ -175,8 +176,8 @@ int filter_lobby_theaters(MapCatalog& cat) {
 
 
 bool addon_map_token(const std::string& token) {
-    if(token.rfind("maps/",0)!=0 || token.size()>205)return false;
-    const auto leaf=token.substr(5);
+    if((token.rfind("maps/",0)!=0 && token.rfind("modmaps/",0)!=0) || token.size()>208)return false;
+    const auto leaf=token.substr(token.find('/')+1);
     if(leaf.empty() || leaf.front()=='.' || leaf.find_first_of("/\\:")!=std::string::npos)return false;
     for(unsigned char c:leaf)if(c<32 || c==127)return false;
     const auto dot=leaf.find_last_of('.');
@@ -207,7 +208,7 @@ MapEntry inspect_addon_map(const std::string& text,const std::string& token) {
     for(std::size_t i=0;i<starts.size();++i)
         if(starts[i].index!=static_cast<int>(i) || !map.at(starts[i].x,starts[i].y))
             throw std::runtime_error("invalid or noncontiguous player starts");
-    MapEntry e;e.file_name=token;e.base_name=token.substr(5);e.theater=theater;e.addon=true;
+    MapEntry e;e.file_name=token;e.base_name=token.substr(token.find('/')+1);e.theater=theater;e.addon=true;
     e.display_name=ini.get("Basic","Name",e.base_name);e.min_players=2;e.max_players=static_cast<int>(starts.size());
     std::string modes=lower(ini.get("Basic","GameMode","standard"));std::istringstream stream(modes);std::string mode;
     while(std::getline(stream,mode,',')) {
@@ -218,7 +219,12 @@ MapEntry inspect_addon_map(const std::string& text,const std::string& token) {
 }
 std::vector<std::uint8_t> read_addon_map(const std::string& dir,const std::string& token) {
     if(!addon_map_token(token))throw std::runtime_error("invalid addon map token");
-    const auto path=std::filesystem::path(dir)/token;
+    std::filesystem::path path;
+    if(token.rfind("modmaps/",0)==0) {
+        const auto mod=ra2assets::active_mod();if(!mod)throw std::runtime_error("Map requires an active mod");
+        const auto resolved=mod->map_path(token.substr(8));if(resolved.empty())throw std::runtime_error("Map missing from selected mod");
+        path=std::filesystem::u8path(resolved);
+    } else path=std::filesystem::path(dir)/token;
     if(std::filesystem::is_symlink(path.parent_path()) || std::filesystem::is_symlink(path) || !std::filesystem::is_regular_file(path) ||
        std::filesystem::file_size(path)>16*1024*1024)throw std::runtime_error("invalid addon map file");
     auto bytes=ra2assets::read_file(path.string());
@@ -233,10 +239,12 @@ std::vector<std::uint8_t> read_catalog_map(const MapCatalog& cat,const std::stri
 }
 void append_addon_maps(MapCatalog& cat,const std::string& dir,const std::string& mode_tag) {
     cat.directory=dir;const auto path=std::filesystem::path(dir)/"maps";
-    std::error_code ec;if(!std::filesystem::is_directory(path,ec))return;
-    if(std::filesystem::is_symlink(path,ec))return;
     std::vector<std::string> tokens;
-    for(std::filesystem::directory_iterator it(path,ec),end;!ec && it!=end;it.increment(ec)) {
+    if(const auto mod=ra2assets::active_mod())for(const auto& leaf:mod->maps())tokens.push_back("modmaps/"+leaf);
+    std::error_code ec;
+    const bool base_maps=std::filesystem::is_directory(path,ec) && !std::filesystem::is_symlink(path,ec);
+    ec.clear();
+    for(std::filesystem::directory_iterator it=base_maps?std::filesystem::directory_iterator(path,ec):std::filesystem::directory_iterator(),end;!ec && it!=end;it.increment(ec)) {
         const auto token="maps/"+it->path().filename().string();
         if(addon_map_token(token))tokens.push_back(token);
     }

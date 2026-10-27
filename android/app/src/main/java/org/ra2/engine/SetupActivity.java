@@ -66,6 +66,7 @@ public class SetupActivity extends Activity {
     private static final String TAG = "RA2Setup";
     private static final int REQ_TREE = 1;
     private static final int REQ_MAPS_TREE = 2;
+    private static final int REQ_MOD_TREE = 5;
     private static final int REQ_CAMPAIGN_IMPORT = 3;
     private static final int REQ_CAMPAIGN_EXPORT = 4;
     public static final String EXTRA_IMPORT = "org.ra2.engine.IMPORT";
@@ -279,6 +280,7 @@ public class SetupActivity extends Activity {
         root.addView(importButton);
         mapsButton = button("🗺   Import custom maps", v -> pickMapsFolder());
         root.addView(mapsButton);
+        root.addView(button("Mods & compatibility", v -> { if(!copying) ModManager.show(this,REQ_MOD_TREE); }));
 
         root.addView(label("CAMPAIGN PROGRESS",12,Color.rgb(135,163,181)));
         campaignImportButton = button("🏆   Import campaign progress", v -> pickCampaignProgress(false));
@@ -397,6 +399,10 @@ public class SetupActivity extends Activity {
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        if (req==REQ_MOD_TREE) {
+            if(res==RESULT_OK && data!=null && data.getData()!=null)ModManager.importFolder(this,data.getData());
+            return;
+        }
         if (req == REQ_CAMPAIGN_IMPORT) {
             if (res == RESULT_OK && data != null && data.getData() != null)
                 importCampaignProgress(data.getData());

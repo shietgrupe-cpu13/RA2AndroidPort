@@ -14,7 +14,7 @@ inline const ra2assets::AssetFS& asset_fs() {
     const ra2assets::TheaterChain& ch = art_chain();
     auto it = cache.find(ch.name);
     if (it == cache.end())
-        it = cache.emplace(ch.name, std::make_unique<ra2assets::AssetFS>(env_install_dir(), &ch)).first;
+        it = cache.emplace(ch.name, std::make_unique<ra2assets::AssetFS>(env_install_dir(), &ch, ra2assets::active_mod())).first;
     return *it->second;
 }
 

@@ -17,6 +17,7 @@
 // lobby map hillbtwn -- is reachable only through this tail].
 #include "ra2assets/mix.hpp"
 #include "ra2assets/theater_name.hpp"
+#include "ra2assets/mod_profile.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -44,7 +45,8 @@ public:
     // Opens every archive of asset_search_order() that exists under
     // `install_dir` (which must end with a path separator). Missing archives
     // are skipped silently; nothing throws.
-    AssetFS(const std::string& install_dir, const TheaterChain* chain);
+    AssetFS(const std::string& install_dir, const TheaterChain* chain,
+            std::shared_ptr<const ModProfile> mod = nullptr);
 
     // First archive (in search order) holding `name` (case-insensitive).
     // Returns nullptr when absent everywhere; `label` gets the archive label.
@@ -65,6 +67,7 @@ public:
     const std::vector<std::pair<std::string, std::shared_ptr<MixFile>>>& mixes() const { return mixes_; }
 
 private:
+    std::shared_ptr<const ModProfile> mod_;
     const TheaterChain* chain_ = nullptr;
     std::vector<std::pair<std::string, std::shared_ptr<MixFile>>> mixes_;
     std::size_t yr_begin_ = 0;   // index of the first YR (ra2md.mix) archive

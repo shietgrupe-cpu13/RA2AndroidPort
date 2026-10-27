@@ -91,6 +91,8 @@ inline std::uint32_t rules_crc() {
             crc = ra2engine::save::crc32(reinterpret_cast<const std::uint8_t*>(&n), sizeof n, crc);
             if (!b.empty()) crc = ra2engine::save::crc32(b.data(), b.size(), crc);
         }
+        if (const auto mod=ra2assets::active_mod())
+            crc=ra2engine::save::crc32(reinterpret_cast<const uint8_t*>(mod->fingerprint.data()),mod->fingerprint.size(),crc);
     }
     return crc;
 }

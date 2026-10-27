@@ -84,6 +84,22 @@ MixFile MixFile::open_path(const std::string& path) {
     return open_view(std::move(src), 0, n);
 }
 
+MixFile MixFile::open_loose_path(const std::string& name, const std::string& path) {
+    auto source=std::make_shared<detail::MixSource>();
+    source->f=std::fopen(path.c_str(),"rb");
+    if(!source->f)throw std::runtime_error("cannot open loose resource: "+path);
+    source->path=path;
+#if defined(_WIN32)
+    _fseeki64(source->f,0,SEEK_END);const auto size=_ftelli64(source->f);
+#else
+    fseeko(source->f,0,SEEK_END);const auto size=ftello(source->f);
+#endif
+    if(size<0 || static_cast<uint64_t>(size)>64*1024*1024)throw std::runtime_error("invalid loose resource size: "+path);
+    source->file_size=static_cast<uint64_t>(size);
+    MixFile m;m.src_=std::move(source);m.size_=static_cast<uint64_t>(size);
+    m.entries_.push_back({mix_id(name),0,static_cast<uint32_t>(size)});return m;
+}
+
 MixFile MixFile::open_view(std::shared_ptr<detail::MixSource> src, uint64_t base, uint64_t size) {
     MixFile m;
     m.src_ = std::move(src);

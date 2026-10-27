@@ -69,6 +69,14 @@ public class RA2Activity extends SDLActivity implements AudioManager.OnAudioFocu
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         try {
+            try {
+                java.io.File mod=ModManager.selectedFolder(this);
+                Os.setenv("RA2_MOD_DIR",mod==null?"":mod.getCanonicalPath(),true);
+            } catch(java.io.IOException e) {
+                // Never silently launch the base game when a selected profile disappeared.
+                Log.e(TAG,"Selected mod unavailable",e);
+                Os.setenv("RA2_MOD_DIR",new java.io.File(ModManager.root(this),".missing-selection").getAbsolutePath(),true);
+            }
             SharedPreferences controls=getSharedPreferences("interface",MODE_PRIVATE);
             Os.setenv("RA2_TOUCH_ACTIONS",Integer.toString(Math.max(0,Math.min(127,controls.getInt("touch_actions",127)))),true);
             Os.setenv("RA2_TOUCH_COLLAPSED",controls.getBoolean("touch_collapsed",true)?"1":"0",true);

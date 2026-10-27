@@ -141,6 +141,6 @@ final class Diagnostics {
     }
     private static boolean allowed(String name) {
         return name.matches("(?:engine|assets)-(?:current|previous)\\.log") || name.equals("device.txt") || name.equals("skirmish.txt") ||
-            name.equals("process-exits.txt") || name.equals("java-crash.txt") || name.equals("running.txt") || name.equals("report.txt") || name.matches("exit-[0-9]+\\.trace");
+            name.equals("process-exits.txt") || name.equals("java-crash.txt") || name.equals("running.txt") || name.equals("report.txt") || name.equals("mod-inspection.txt") || name.matches("exit-[0-9]+\\.trace");
     }
 }

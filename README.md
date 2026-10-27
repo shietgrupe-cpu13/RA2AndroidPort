@@ -20,6 +20,9 @@ Android fork modifications: **Bryle13 (shietgrupe-cpu13)**.
 - Existing upstream context actions, bottom-centred command dock, groups and production
   controls are retained. Native pinch zoom is still pending.
 - [Source comparison and validation limits](docs/ANDROID_TOUCH_COMPARISON.md).
+- Initial [mod profiles and compatibility reports](docs/MOD-PROFILES.md) are available through
+  the launcher. An asset-free sample is included; Mental Omega remains blocked
+  pending its engine-extension and content adapters.
 - Native gesture regression tests and APK package/signature checks passed;
   broader asset-dependent tests are not a full gameplay pass.
 

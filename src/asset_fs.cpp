@@ -80,8 +80,8 @@ std::vector<AssetMixSpec> asset_search_order(const TheaterChain* chain,
     return out;
 }
 
-AssetFS::AssetFS(const std::string& install_dir, const TheaterChain* chain)
-    : chain_(chain ? chain : theater_chain("TEMPERATE")) {
+AssetFS::AssetFS(const std::string& install_dir, const TheaterChain* chain, std::shared_ptr<const ModProfile> mod)
+    : mod_(std::move(mod)), chain_(chain ? chain : theater_chain("TEMPERATE")) {
     if (chain_->yr_only) chain_ = theater_chain("TEMPERATE");
     // Top-level patch archives present on the install, in the original's
     // order: EXPAND99 .. EXPAND00 (descending), then ECACHE*/ELOCAL*.
@@ -129,6 +129,7 @@ AssetFS::AssetFS(const std::string& install_dir, const TheaterChain* chain)
 const MixEntry* AssetFS::find(const std::string& name, const MixFile** owner, std::string* label,
                               bool ra2_only, bool prefer_yr) const {
     if (name.empty()) return nullptr;
+    if (mod_) if (const auto* e=mod_->find(name,owner,label)) return e;
     const uint32_t id = mix_id(name);
     const std::size_t end = ra2_only ? yr_begin_ : mixes_.size();
     // Opt-in YR override: retain relative archive order in each group and

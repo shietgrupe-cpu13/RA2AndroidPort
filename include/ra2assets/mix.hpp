@@ -24,6 +24,8 @@ public:
     // child archive. Opening the same path twice shares one handle. Throws
     // like read_file ("cannot open file: <path>") when absent.
     static MixFile open_path(const std::string& path);
+    // One loose resource exposed through the existing offset reader (no packing/copy).
+    static MixFile open_loose_path(const std::string& name, const std::string& path);
     bool encrypted() const { return encrypted_; }
     bool checksummed() const { return checksummed_; }
     size_t count() const { return entries_.size(); }

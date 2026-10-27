@@ -763,6 +763,13 @@ std::vector<uint8_t> read_ra2md_file(const std::string& dir, const std::string& 
     }
     if (ini_bytes.empty())
         throw std::runtime_error(name + " not found in ra2md.mix (top level or nested)");
+    if (const auto mod=ra2assets::active_mod()) {
+        std::vector<uint8_t> patch;
+        if(mod->read(name,patch)) {
+            ini_bytes=ra2assets::merge_mod_ini(ini_bytes,patch);
+            ra2assets::trace_asset("ini-source",name,"mod:"+mod->id,ini_bytes.size());
+        }
+    }
     return ini_bytes;
 }
 
@@ -19508,6 +19515,24 @@ int main(int argc, char** argv) {
     SDL_SetMainReady();   // Net L0: plain executable, no SDLActivity
 #endif
     try {
+        std::string mod_directory;
+        if (const char* selected=std::getenv("RA2_MOD_DIR")) mod_directory=selected;
+        for (int i=1;i+1<argc;++i) if(std::string(argv[i])=="--mod") mod_directory=argv[++i];
+        if(!mod_directory.empty()) {
+            const auto mod=ra2assets::ModProfile::inspect(mod_directory);
+            std::cerr << "[mod] " << mod->report();
+            if(!mod->can_activate()) throw std::runtime_error("Selected mod is blocked: " + mod->report());
+            ra2assets::activate_mod(mod);
+            std::string pref;
+            if(const char* base=std::getenv("RA2_PREF_DIR"))pref=base;
+            else if(char* base=SDL_GetPrefPath("ra2engine","RA2")){pref=base;SDL_free(base);}
+            if(pref.empty())throw std::runtime_error("No writable directory for mod saves");
+            const auto isolated=std::filesystem::u8path(pref)/"Mod Profiles"/(mod->id+"-"+mod->fingerprint);
+            std::filesystem::create_directories(isolated);
+            const auto path=isolated.u8string()+"/";
+            SDL_setenv("RA2_PREF_DIR",path.c_str(),1);
+            std::ofstream report(isolated/"mod-report.txt");report<<mod->report();
+        }
 #if defined(__ANDROID__) && !defined(RA2_ANDROID_CLI)
         // Android launches straight into the interactive engine: there is no
         // CLI, so the desktop-only verification modes (--screenshot/--demo-*)
@@ -19609,6 +19634,7 @@ int main(int argc, char** argv) {
         bool quick_skirmish = false;
         for (int i = 1; i < argc; ++i) {
             std::string arg = argv[i];
+            if (arg == "--mod" && i + 1 < argc) { ++i; continue; }
             if (arg == "--scene-shot" && i + 1 < argc) {
                 return run_scene_shot(argc, argv, i + 1);   // G-8x presentation harness
             }
