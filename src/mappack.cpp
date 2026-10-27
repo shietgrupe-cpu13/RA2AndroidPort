@@ -65,6 +65,12 @@ std::vector<uint8_t> decompress_mappack(const uint8_t* data, size_t len, MapPack
         uint16_t cmp   = (uint16_t)(data[pos] | (uint16_t)(data[pos + 1] << 8));
         uint16_t uncmp = (uint16_t)(data[pos + 2] | (uint16_t)(data[pos + 3] << 8));
         pos += 4;
+        // A map pack is bounded by the 512x512 cell format (terrain <3 MiB,
+        // overlays 256 KiB). Leave ample room for previews while rejecting
+        // cumulative expansion before allocating/decompressing another chunk.
+        constexpr size_t max_pack_bytes=16u*1024u*1024u;
+        if(uncmp>max_pack_bytes-out.size())
+            throw std::runtime_error("format5: decoded pack exceeds 16 MiB limit");
         if (pos + cmp > len)
             throw std::runtime_error(
                 "format5: chunk body (size=" + std::to_string(cmp) +

@@ -108,3 +108,13 @@ TEST_CASE("format5: real map OverlayPack decompresses (closes Task 1 real-data L
     MESSAGE("real map OverlayPack: " << packed.size() << " packed bytes -> " << cells.size()
             << " decompressed bytes");
 }
+
+TEST_CASE("map pack: cumulative chunk expansion is bounded before allocation") {
+ std::vector<uint8_t> packed;
+ for(int n=0;n<257;++n) {
+  // One valid LCW fill of 65535 zero bytes per Format5 chunk.
+  for(uint8_t b:{5,0,255,255,254,255,255,0,128})packed.push_back(b);
+ }
+ CHECK_THROWS_WITH(ra2assets::decompress_format5(packed.data(),packed.size()),
+                   "format5: decoded pack exceeds 16 MiB limit");
+}
