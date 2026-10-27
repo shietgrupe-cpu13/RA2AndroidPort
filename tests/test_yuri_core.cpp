@@ -1547,23 +1547,6 @@ TEST_CASE("nuclear damage: stock armor multipliers, friendly fire and falloff re
  CHECK(w.units()[0].hp==3800);CHECK(w.units()[1].hp==4388);
 }
 
-TEST_CASE("bridge engineer roles: all faction engineers repair a destroyed span without capturing its hut") {
- for(int house=0;house<3;++house) {
-  Rig r;World w(r.map);BuildingTypeDef hut;hut.id="CABHUT";hut.strength=100;hut.bridge_repair_hut=true;
-  w.set_building_types({hut});int b=w.add_building(0,8,8,1,1,3,100,0,0,true);
-  std::vector<std::uint8_t> deck(w.grid_w()*w.grid_h(),0);
-  for(int x=9;x<=13;++x)deck[8*w.grid_w()+x]=1;
-  w.set_high_bridges(deck);REQUIRE(w.force_bridge_break(11,8)==5);
-  auto eng=unit(house==0?"ENGINEER":house==1?"SENGINEER":"YENGINEER");eng.w7.engineer=true;
-  w.set_order_issuer(house);w.add_combat_unit(7,8,house,eng);
-  REQUIRE(w.engineer_action(0,b)==World::EngineerAct::Hut);
-  auto capture=make_mega(w,{0},Mission::Capture,Target::building(b),{});
-  capture.house=static_cast<std::int8_t>(house);apply_command(w,capture);
-  for(int n=0;n<30;++n)w.step(1.0/15.0);
-  CHECK(w.bridge_cells_destroyed()==0);CHECK_FALSE(w.units()[0].alive);CHECK(w.buildings()[b].house==3);
- }
-}
-
 TEST_CASE("Yuri sidebar: retail RADARYURI palette is separate from Soviet chrome") {
  if(!ra2fixture::assets_available()){MESSAGE("skipped: retail assets absent");return;}
  const auto& ra2=ra2fixture::ra2_mix();auto soviet=ra2.open_nested("sidec02.mix");
@@ -1580,3 +1563,44 @@ TEST_CASE("Yuri sidebar: retail RADARYURI palette is separate from Soviet chrome
  CHECK(changed>0);
 }
 
+TEST_CASE("nuclear silo damage: native spread visits all nine foundation cells") {
+ Rig r;World w(r.map);SwParams p;p.nuke_up_frames=1;p.nuke_down_frames=1;p.nuke_rad_level=0;w.set_sw_params(p);
+ BuildingTypeDef silo;silo.id="NAMISL";silo.strength=1000;silo.fw=silo.fh=3;
+ silo.armor_ix=8;w.set_building_types({silo}); // stock armor_names index: concrete
+ int b=w.add_building(0,8,8,3,3,1,1000,silo.armor_ix,0,true);
+ std::array<int,11> verses={100,100,100,200,100,100,60,100,8,100,100};
+ w.grant_superweapon(0,SuperweaponType::Nuke,0,600,10,.02,verses);
+ w.step(1.0/15.0);REQUIRE(w.fire_superweapon_at(0,SuperweaponType::Nuke,9,9));
+ w.step(1.0/15.0);w.step(1.0/15.0);
+ // One centre hit (48), four adjacent (43), four diagonal (41).
+ // The old separate superweapon applicator dealt only the nearest-cell 48.
+ CHECK(w.buildings()[b].hp==616);
+}
+
+TEST_CASE("Weather Storm damage: each foundation cell receives its native area hit") {
+ Rig r;World w(r.map);SwParams p;p.storm_deferment=0;p.storm_duration=30;
+ p.storm_hit_delay=1;p.storm_scatter_delay=100;p.storm_wh_spread=2;p.storm_wh_pmax=.5;
+ p.storm_verses.fill(100);w.set_sw_params(p);
+ BuildingTypeDef d;d.id="TARGET";d.strength=5000;d.fw=d.fh=2;w.set_building_types({d});
+ int b=w.add_building(0,8,8,2,2,1,5000,0,0,true);
+ w.grant_superweapon(0,SuperweaponType::LightningStorm,0,600,10,.02,{});
+ w.step(1.0/15.0);REQUIRE(w.fire_superweapon_at(0,SuperweaponType::LightningStorm,8,8));
+ w.step(1.0/15.0);
+ CHECK(w.buildings()[b].hp==4215); // 250 + 187 + 187 + 161
+}
+TEST_CASE("bridge engineer roles: all faction engineers repair a destroyed span without capturing its hut") {
+ for(int house=0;house<3;++house) {
+  Rig r;World w(r.map);BuildingTypeDef hut;hut.id="CABHUT";hut.strength=100;hut.bridge_repair_hut=true;
+  w.set_building_types({hut});int b=w.add_building(0,8,8,1,1,3,100,0,0,true);
+  std::vector<std::uint8_t> deck(w.grid_w()*w.grid_h(),0);
+  for(int x=9;x<=13;++x)deck[8*w.grid_w()+x]=1;
+  w.set_high_bridges(deck);REQUIRE(w.force_bridge_break(11,8)==5);
+  auto eng=unit(house==0?"ENGINEER":house==1?"SENGINEER":"YENGINEER");eng.w7.engineer=true;
+  w.set_order_issuer(house);w.add_combat_unit(7,8,house,eng);
+  REQUIRE(w.engineer_action(0,b)==World::EngineerAct::Hut);
+  auto capture=make_mega(w,{0},Mission::Capture,Target::building(b),{});
+  capture.house=static_cast<std::int8_t>(house);apply_command(w,capture);
+  for(int n=0;n<30;++n)w.step(1.0/15.0);
+  CHECK(w.bridge_cells_destroyed()==0);CHECK_FALSE(w.units()[0].alive);CHECK(w.buildings()[b].house==3);
+ }
+}

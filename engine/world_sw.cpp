@@ -386,11 +386,19 @@ void World::an_nuke_detonate(const SwStrike& s) {
         pmax = an_.nuke_pmax;
         verses = an_.nuke_verses;
     }
-    // W2-AN-06: everything in the blast, the firer's own units and airborne
-    // units included (FUN_00489190 has no house or layer filter).
-    an_area_damage(s.house, s.x, s.y, dmg, spread, pmax, verses, /*hit_air=*/true,
-                   /*spare_house=*/false, 0.0, an_.sw.nuke_wall_flags,   // W6-04-04: walls erased
-                   nuke_inf_death_);                                     // W7-12-08
+    // Use the same recovered DamageArea owner as ordinary weapon impacts.
+    // In particular a building is encountered in EACH foundation cell, not
+    // just the nearest one (combat.md section 7; Ares CellSpread hit-limit docs).
+    // A 3x3 concrete silo was previously receiving only one of its nine hits.
+    Unit payload;
+    payload.house=s.house;payload.w_damage=dmg;
+    payload.w_cell_spread=spread;payload.w_percent_at_max=pmax;
+    payload.w_verses.assign(verses.begin(),verses.end());
+    payload.w_affects_allies=true;payload.w_inf_death=nuke_inf_death_;
+    payload.w6.wall_flags=an_.sw.nuke_wall_flags;
+    const int impact_z=deck_z(s.x,s.y);
+    damage_area(*this,units_,buildings_,occ_,payload,-1,-1,s.x*kLept,s.y*kLept,impact_z);
+    bridge_area_roll(s.x,s.y,dmg,an_.sw.nuke_wall_flags,impact_z);
     // [NukePayload] RadLevel=500: a radiation site over the blast (P4 RadField;
     // spread = the warhead CellSpread, as BulletClass::Detonate's RadSite block).
     if (an_.sw.nuke_rad_level > 0 && grid_w_ > 0 && grid_h_ > 0) {
@@ -615,9 +623,12 @@ void World::an_storm_bolt(SwStrike& s, int x, int y) {
     bool any = false;
     for (int v : verses) any |= v != 0;
     if (!any) verses.fill(100);
-    an_area_damage(s.house, x, y, an_.sw.storm_damage, an_.sw.storm_wh_spread, an_.sw.storm_wh_pmax,
-                   verses, /*hit_air=*/false, /*spare_house=*/false, 0.0, an_.sw.storm_wall_flags,   // W6-04-04
-                   storm_inf_death_);   // W7-12-08
+    // The same foundation/ring damage owner as the nuke and weapon impacts.
+    Unit payload;payload.house=s.house;payload.w_damage=an_.sw.storm_damage;
+    payload.w_cell_spread=an_.sw.storm_wh_spread;payload.w_percent_at_max=an_.sw.storm_wh_pmax;
+    payload.w_verses.assign(verses.begin(),verses.end());payload.w_affects_allies=true;
+    payload.w_inf_death=storm_inf_death_;payload.w6.wall_flags=an_.sw.storm_wall_flags;
+    damage_area(*this,units_,buildings_,occ_,payload,-1,-1,x*kLept,y*kLept,deck_z(x,y));
     // W8-06-04 [RE: FUN_0053A030 -- the bolt is DamageArea FUN_00489190 at
     // the cell centre with Z = Level + BridgeHeight on a bridge cell
     // (GetCoordsWithBridge), LightningWarhead IonWH Wall=yes: the bridge block
