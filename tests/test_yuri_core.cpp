@@ -26,6 +26,7 @@
 #include "unit_presentation.hpp"
 #include "faction_art.hpp"
 #include "disk_laser.hpp"
+#include "sidebar_assets.hpp"
 #include <fstream>
 #include <iterator>
 using namespace ra2engine;
@@ -1562,3 +1563,20 @@ TEST_CASE("bridge engineer roles: all faction engineers repair a destroyed span 
   CHECK(w.bridge_cells_destroyed()==0);CHECK_FALSE(w.units()[0].alive);CHECK(w.buildings()[b].house==3);
  }
 }
+
+TEST_CASE("Yuri sidebar: retail RADARYURI palette is separate from Soviet chrome") {
+ if(!ra2fixture::assets_available()){MESSAGE("skipped: retail assets absent");return;}
+ const auto& ra2=ra2fixture::ra2_mix();auto soviet=ra2.open_nested("sidec02.mix");
+ const auto* e=soviet.find(std::string("sidebar.pal"));REQUIRE(e);
+ auto raw=soviet.read(*e);auto base=ra2assets::Palette::load(raw.data(),raw.size());
+ auto yuri=yuri_sidebar_overrides(ra2fixture::top_mix());e=yuri.find(std::string("radaryuri.pal"));REQUIRE(e);
+ raw=yuri.read(*e);auto expected=ra2assets::Palette::load(raw.data(),raw.size());
+ auto radar=sidebar_radar_palette(base,&yuri),fallback=sidebar_radar_palette(base,nullptr);int changed=0;
+ for(int i=0;i<256;++i) {
+  CHECK(radar[i].r==expected[i].r);CHECK(radar[i].g==expected[i].g);CHECK(radar[i].b==expected[i].b);
+  CHECK(fallback[i].r==base[i].r);CHECK(fallback[i].g==base[i].g);CHECK(fallback[i].b==base[i].b);
+  changed+=radar[i].r!=base[i].r || radar[i].g!=base[i].g || radar[i].b!=base[i].b;
+ }
+ CHECK(changed>0);
+}
+

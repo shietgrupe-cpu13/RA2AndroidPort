@@ -682,6 +682,7 @@ struct BuildingAssets {
                        sb_optbtn, sb_diplobtn;
     bool has_radar = false, has_side3 = false, has_addon = false, has_scroll = false,
          has_repair_sell = false, has_optbtns = false;
+    ra2assets::Palette sb_radar_pal;
     ra2assets::Palette sb_pal;                       // sidebar.pal if present, else cameo.pal
     ra2assets::ShpFile sb_darken;                    // W2-UI-05 language.mix/cameo.mix/darken.shp
     bool has_darken = false;
@@ -2746,6 +2747,7 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
     // sidebar.pal; game.exe 0x7F8AF8 "SIDEBAR.PAL"]. Loaded with the chrome
     // below; cameo.pal stays the fallback and the cameo palette.
     ba.sb_pal = ba.cameo_pal;
+    ba.sb_radar_pal=ba.sb_pal;
 
     // Theater art mix cache: open each nested mix once, lazily; a mix that
     // fails to open is remembered as null so later candidates just skip it.
@@ -3023,7 +3025,11 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
         auto opt = [&](ra2assets::ShpFile& dst, const char* fn, bool& flag) {
             try { dst = load_sb(fn); flag = true; } catch (const std::exception&) {}
         };
-        if (std::string(g_sidebar_mix)=="sidec03.mix") opt(ba.sb_radar,"radary.shp",ba.has_radar);
+        ba.sb_radar_pal=ba.sb_pal;
+        if (std::string(g_sidebar_mix)=="sidec03.mix") {
+            opt(ba.sb_radar,"radary.shp",ba.has_radar);
+            if(ba.has_radar)ba.sb_radar_pal=ra2engine::sidebar_radar_palette(ba.sb_pal,yuri_override.get());
+        }
         if (!ba.has_radar) opt(ba.sb_radar, "radar.shp", ba.has_radar);
         opt(ba.sb_side3, "side3.shp", ba.has_side3);
         opt(ba.sb_addon, "addon.shp", ba.has_addon);
@@ -5786,14 +5792,14 @@ void draw_sidebar(SDL_Renderer* ren, ra2engine::TextureCache& tc, const Building
         // frame is the open frame drawn over the live map.
         const int boot = (g_radar && ba.has_radar) ? g_radar->boot_frame(ba.sb_radar.count()) : -1;
         if (boot > 0) {
-            blit_shp(ren, tc, "sb:radar:" + std::to_string(boot), ba.sb_radar, boot, ba.sb_pal, lay.radar.x, lay.radar.y);
+            blit_shp(ren, tc, "sb:radar:" + std::to_string(boot), ba.sb_radar, boot, ba.sb_radar_pal, lay.radar.x, lay.radar.y);
         } else {
             // The open frame is opaque; the map draws into the radar gadget's
             // viewport 140x108 at bar (16, 49) (W2-UI-09 [RE: construction.md
             // §11a radar gadget 223]) -- draw and click share it (cell_at).
             ra2engine::SbRect screen = lay.radar;
             if (g_radar && ba.has_radar && ba.sb_radar.count() > 1) {
-                blit_shp(ren, tc, "sb:radar:open", ba.sb_radar, ba.sb_radar.count() - 1, ba.sb_pal,
+                blit_shp(ren, tc, "sb:radar:open", ba.sb_radar, ba.sb_radar.count() - 1, ba.sb_radar_pal,
                          lay.radar.x, lay.radar.y);
                 screen = ra2engine::SbRect{lay.bar.x + 16, 49, 140, 108};
             }
@@ -5803,10 +5809,10 @@ void draw_sidebar(SDL_Renderer* ren, ra2engine::TextureCache& tc, const Building
         // W2-UI-09: a radar that just went offline folds back (reverse boot).
         const int close = g_radar ? g_radar->close_frame(ba.sb_radar.count()) : 0;
         if (close > 0)
-            blit_shp(ren, tc, "sb:radar:" + std::to_string(close), ba.sb_radar, close, ba.sb_pal, lay.radar.x,
+            blit_shp(ren, tc, "sb:radar:" + std::to_string(close), ba.sb_radar, close, ba.sb_radar_pal, lay.radar.x,
                      lay.radar.y);
         else
-            blit_shp(ren, tc, "sb:radar", ba.sb_radar, 0, ba.sb_pal, lay.radar.x, lay.radar.y);
+            blit_shp(ren, tc, "sb:radar", ba.sb_radar, 0, ba.sb_radar_pal, lay.radar.x, lay.radar.y);
     }
     // side1 band (carries the repair/sell socket art), then the buttons.
     blit_shp(ren, tc, "sb:side1", ba.sb_side1, 0, ba.sb_pal, lay.side1.x, lay.side1.y);
@@ -8928,7 +8934,12 @@ std::unique_ptr<MenuAudio> load_menu_music(const std::string& dir) {
         } else {
             mono = std::move(pcm);
         }
-        const int id = ma->sys.bank.add(std::move(mono));
+        id = ma->sys.bank.add(std::move(mono));
+    } catch(const std::exception& ex) {
+        std::cerr<<"[menu-music] optional score unavailable: "<<ex.what()<<"\n";
+    }
+    // UI events must remain available when an optional theme is not imported.
+    try {
         // [SK-32] Shell GUI sounds (rules [AudioVisual] GUIMainButtonSound /
         // GUICheckboxSound = MenuClick; combobox open/close = MenuACBOpen /
         // MenuACBClose), soundmd.ini events over the RA2 audio.mix BAG. Must be
