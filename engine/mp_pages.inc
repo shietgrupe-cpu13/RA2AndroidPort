@@ -924,8 +924,8 @@ private:
     std::string map_text(int i) const {
         if (!catalog_ || i < 0 || i >= static_cast<int>(maps().size())) return {};
         try {
-            if (const ra2assets::MixEntry* e = catalog_->maps.find(maps()[static_cast<std::size_t>(i)].file_name)) {
-                const std::vector<uint8_t> raw = catalog_->maps.read(*e);
+            {
+                const auto raw=ra2engine::read_catalog_map(*catalog_,maps()[static_cast<std::size_t>(i)].file_name);
                 return std::string(raw.begin(), raw.end());
             }
         } catch (const std::exception&) {}
@@ -940,7 +940,7 @@ private:
         const std::string text = map_text(i);
         m.size = static_cast<std::uint32_t>(text.size());
         m.digest = ra2mp::normalize_digest(ra2mp::map_digest_of(text));
-        m.official = true;
+        m.official = !ra2engine::addon_map_token(e.file_name);
         return m;
     }
     int map_index_of(const std::string& file) const {

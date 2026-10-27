@@ -336,7 +336,7 @@
         }
         for (const std::string& id : vehicle_ids) {
             if (gf_has_vehicle_art(rules_.image(id))) continue;
-            VehicleAssets va = load_vehicle_assets(dir_, ra2_, ua_.pal, id);
+            VehicleAssets va = load_vehicle_assets(dir_, ra2_, ua_.pal, id,&rules_);
             if (!va.ok) {
                 std::cerr << "[w2] no voxel art for spawned " << id << "\n";
                 continue;

@@ -44,6 +44,8 @@ std::vector<MapEntry> build_map_catalog(const std::string& pkt_text,
 struct MapCatalog {
     std::vector<MapEntry>  entries;
     ra2assets::MixFile     maps;      // multimd.mix
+    std::string directory;
+    std::vector<std::string> rejected_addons;
 };
 
 // Open <dir>/multimd.mix + <dir>/langmd.mix, read missionsmd.pkt + ra2md.csf,
@@ -59,6 +61,13 @@ MapCatalog load_yr_map_catalog(const std::string& dir, const std::string& mode_t
 // the skirmish lobby hides them. Reads each map's [Map] Theater= from
 // `cat.maps`, records it in MapEntry::theater and drops the YR-only ones.
 // Returns the number removed. A map whose theater cannot be read is kept.
+// Addon maps live in an isolated maps/ directory. Tokens contain a leaf name,
+// never an arbitrary path, and remain relative in saves and network manifests.
+bool addon_map_token(const std::string& token);
+MapEntry inspect_addon_map(const std::string& text,const std::string& token);
+std::vector<std::uint8_t> read_addon_map(const std::string& dir,const std::string& token);
+std::vector<std::uint8_t> read_catalog_map(const MapCatalog& catalog,const std::string& token);
+void append_addon_maps(MapCatalog& catalog,const std::string& dir,const std::string& mode_tag);
 std::string map_theater_of(const std::string& map_text);    // "" when absent
 bool lobby_theater_supported(const std::string& theater);    // TEMPERATE/SNOW/URBAN (or unknown)
 int filter_lobby_theaters(MapCatalog& cat);

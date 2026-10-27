@@ -168,4 +168,13 @@ bool allowed_type(const PlayerRules& pr, const std::string& id) {
     return std::find(pr.allowed.begin(), pr.allowed.end(), up(id)) != pr.allowed.end();
 }
 
+// Loose skirmish maps may override supported rules keys; use the same merger
+// as campaigns, keeping scenario data out and registry additions additive.
+Ini load_skirmish_rules_ini(const std::string& dir,const std::string& map,const std::string& mode) {
+    Ini base=mode.empty()?load_ini_from_ra2md(dir,"rulesmd.ini"):load_mode_rules_ini(dir,mode);
+    if(!ra2engine::addon_map_token(map))return base;
+    const auto raw=ra2engine::read_addon_map(dir,map);
+    return overlay_map_rules(base,Ini::parse(std::string(raw.begin(),raw.end())));
+}
+
 }  // namespace camp

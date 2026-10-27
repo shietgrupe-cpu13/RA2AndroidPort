@@ -4,6 +4,9 @@
 #include "ra2assets/fileio.hpp"
 #include <cstdlib>
 #include <fstream>
+#include <filesystem>
+#include <chrono>
+#include <algorithm>
 #include <string>
 
 using ra2engine::MapEntry;
@@ -140,4 +143,39 @@ TEST_CASE("maplist: the lobby hides the YR-only DESERT/NEWURBAN maps (real asset
         if (m.file_name == "xmp31s2.map") mayday = true;
     }
     CHECK(mayday);   // a TEMPERATE map the play scripts use stays listed
+}
+
+TEST_CASE("addon maps: tokens reject paths and validation goes beyond the extension") {
+ using namespace ra2engine;
+ CHECK(addon_map_token("maps/Example.YRM"));CHECK(addon_map_token("maps/test.mpr"));
+ for(const auto* name:{"../test.map","maps/../test.map","maps/a/b.map","maps/C:test.map","maps/test.exe","maps/.map"})
+  CHECK_FALSE(addon_map_token(name));
+ CHECK_THROWS(inspect_addon_map("[Map]\nSize=0,0,20,20\nTheater=TEMPERATE\n","maps/test.yrm"));
+ CHECK_THROWS(inspect_addon_map("[Map]\nSize=0,0,999999,20\n[IsoMapPack5]\n1=AAAA\n","maps/test.yrm"));
+ CHECK_THROWS(inspect_addon_map("[Map]\nSize=0,0,20,20\n[Triggers]\nFoo=1\n[IsoMapPack5]\n1=AAAA\n","maps/test.yrm"));
+}
+TEST_CASE("addon maps: retail terrain copied as loose YRM is read, validated and catalogued independently") {
+ using namespace ra2engine;
+ const auto dir=install_dir();if(slurp_ml(dir+"multimd.mix").empty()){MESSAGE("skipped: real maps unavailable");return;}
+ auto cat=load_yr_map_catalog(dir,"standard");std::vector<std::uint8_t> bytes;
+ for(const auto& entry:cat.entries)try {
+  auto raw=read_catalog_map(cat,entry.file_name);
+  (void)inspect_addon_map(std::string(raw.begin(),raw.end()),"maps/test.yrm");bytes=std::move(raw);break;
+ } catch(const std::exception&) {}
+ REQUIRE_FALSE(bytes.empty());
+ const auto temp=std::filesystem::temp_directory_path()/
+   ("ra2-addon-test-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+ std::filesystem::create_directories(temp/"maps");
+ struct Cleanup {std::filesystem::path p;~Cleanup(){std::error_code ec;
+  std::filesystem::remove(p/"maps/test.yrm",ec);std::filesystem::remove(p/"maps/broken.yrm",ec);
+  std::filesystem::remove(p/"maps",ec);std::filesystem::remove(p,ec);}} cleanup{temp};
+ {std::ofstream out(temp/"maps/test.yrm",std::ios::binary);out.write(reinterpret_cast<const char*>(bytes.data()),bytes.size());}
+ {std::ofstream out(temp/"maps/broken.yrm");out<<"Not a game map";}
+ CHECK(read_addon_map(temp.string(),"maps/test.yrm")==bytes);
+ CHECK_THROWS(read_addon_map(temp.string(),"maps/../test.yrm"));
+ const auto count=cat.entries.size();append_addon_maps(cat,temp.string(),"");
+ REQUIRE(cat.entries.size()==count+1);REQUIRE(cat.rejected_addons.size()==1);
+ const auto it=std::find_if(cat.entries.begin(),cat.entries.end(),[](const MapEntry& e){return e.file_name=="maps/test.yrm";});
+ REQUIRE(it!=cat.entries.end());CHECK(it->max_players>=2);CHECK(it->max_players<=8);
+ CHECK(read_catalog_map(cat,it->file_name)==bytes);
 }

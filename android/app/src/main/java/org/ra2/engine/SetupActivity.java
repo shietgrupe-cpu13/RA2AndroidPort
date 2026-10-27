@@ -76,7 +76,11 @@ public class SetupActivity extends Activity {
      */
     static String target(String name) {
         if (name == null) return null;
+        if(name.isEmpty() || name.startsWith(".") || name.length()>200 ||
+            name.indexOf('/')>=0 || name.indexOf('\\')>=0 || name.indexOf(':')>=0)return null;
+        for(int i=0;i<name.length();++i)if(name.charAt(i)<32 || name.charAt(i)==127)return null;
         String l = name.toLowerCase(Locale.ROOT);
+        if(l.endsWith(".yrm") || l.endsWith(".map") || l.endsWith(".mpr"))return "maps/"+l;
         for (String f : FILES) if (f.toLowerCase(Locale.ROOT).equals(l)) return f;
         if (l.matches("(expand|ecache|elocal)\\d\\d\\.mix")) return l;
         if (l.equals("thememd.mix")) return l;
@@ -403,11 +407,11 @@ public class SetupActivity extends Activity {
                 // W6-06-06: a Movies folder next to the files is always read;
                 // R-160: other sub-folders only when the picked folder holds
                 // none of the required files (the folder that CONTAINS RA2).
-                if (!anyRequired || sub[1].equalsIgnoreCase("movies"))
+                if (!anyRequired || sub[1].equalsIgnoreCase("movies") || sub[1].equalsIgnoreCase("maps"))
                     scan(cr, tree, sub[0], found, sizes, anyRequired ? null : deeper);
             }
             for (String[] sub : deeper)
-                if (sub[1].equalsIgnoreCase("movies")) scan(cr, tree, sub[0], found, sizes, null);
+                if (sub[1].equalsIgnoreCase("movies") || sub[1].equalsIgnoreCase("maps")) scan(cr, tree, sub[0], found, sizes, null);
             if (found.isEmpty()) throw new java.io.IOException(getString(R.string.setup_no_files));
             for (Long sz : sizes.values()) total += sz;
             long done = 0;
@@ -424,14 +428,20 @@ public class SetupActivity extends Activity {
                 try (InputStream in = cr.openInputStream(e.getValue());
                      OutputStream os = new FileOutputStream(tmp)) {
                     if (in == null) throw new java.io.IOException("cannot open " + name);
-                    int n;
+                    int n;long copied=0;
                     while ((n = in.read(buf)) > 0) {
+                        copied+=n;
+                        if(name.startsWith("maps/") && copied>16*1024*1024)
+                            throw new java.io.IOException("Map exceeds 16 MiB: "+name);
                         if (cancelImport) throw new java.io.IOException("cancelled");
                         os.write(buf, 0, n);
                         done += n;
                         final int p = total > 0 ? (int) (done * 1000 / total) : 0;
                         ui.post(() -> progress.setProgress(p));
                     }
+                }
+                if(name.startsWith("maps/") && tmp.length()>16*1024*1024) {
+                    tmp.delete();throw new java.io.IOException("Map exceeds 16 MiB: "+name);
                 }
                 Long want = sizes.get(name);
                 if (want != null && want > 0 && tmp.length() != want)

@@ -344,12 +344,16 @@ Assets load_assets(const std::string& dir, const ra2assets::MixFile& ra2,
     load_progress("MAP + THEATER");   // W2-AR-02 loading-screen checkpoint
     // Map: read the selected map INI. The default selection is byte-for-byte
     // the old hardcoded one (mapsmd03.mix / 0x133a0cb2).
-    MixFile maps = MixFile::open_path(dir + sel.mix);
-    const MixEntry* me = sel.name.empty() ? maps.find(sel.id) : maps.find(sel.name);
-    if (!me) throw std::runtime_error("map entry not found in " + sel.mix + ": " +
-                                      (sel.name.empty() ? "id 0x133a0cb2" : sel.name));
-    auto map_raw = maps.read(*me);
-    if(ra2engine::diag::state().enabled.load())ra2engine::diag::note("MAP archive=%s entry=%s id=%08x bytes=%zu fnv1a64=%016llx",sel.mix.c_str(),sel.name.c_str(),me->id,map_raw.size(),static_cast<unsigned long long>(ra2engine::diag::fingerprint(map_raw.data(),map_raw.size())));
+    std::vector<std::uint8_t> map_raw;
+    std::uint32_t map_entry_id=0;
+    if(ra2engine::addon_map_token(sel.name))map_raw=ra2engine::read_addon_map(dir,sel.name);
+    else {
+        MixFile maps=MixFile::open_path(dir+sel.mix);
+        const MixEntry* me=sel.name.empty()?maps.find(sel.id):maps.find(sel.name);
+        if(!me)throw std::runtime_error("map entry not found in "+sel.mix+": "+sel.name);
+        map_entry_id=me->id;map_raw=maps.read(*me);
+    }
+    if(ra2engine::diag::state().enabled.load())ra2engine::diag::note("MAP archive=%s entry=%s id=%08x bytes=%zu fnv1a64=%016llx",sel.mix.c_str(),sel.name.c_str(),map_entry_id,map_raw.size(),static_cast<unsigned long long>(ra2engine::diag::fingerprint(map_raw.data(),map_raw.size())));
     MapFile map = MapFile::parse(std::string(map_raw.begin(), map_raw.end()));
 
     // Theater chain [RE: maps.md §6 + §9.4]. Replaces the old TEMPERATE-only
@@ -1830,12 +1834,14 @@ void spawn_squad(ra2engine::World& world, int origin_x, int origin_y, int count,
 // shared already-open ra2.mix. Turret/barrel absence is not an error for a
 // non-turreted vehicle (Rules::has_turret gates the attempt).
 VehicleAssets load_vehicle_assets(const std::string& dir, const ra2assets::MixFile& ra2,
-                                  const ra2assets::Palette& unit_pal, const std::string& unit_id) {
+                                  const ra2assets::Palette& unit_pal, const std::string& unit_id,
+                                  const Rules* scenario_rules=nullptr) {
     load_progress("VEHICLE VOXELS");   // W2-AR-02 loading-screen checkpoint
     VehicleAssets va;
     try {
-        Ini rules_ini = load_ini_from_ra2md(dir, "rulesmd.ini");
-        Rules rules = Rules::load(rules_ini);
+        Ini rules_ini = scenario_rules ? Ini{} : load_ini_from_ra2md(dir, "rulesmd.ini");
+        Rules base_rules = Rules::load(rules_ini);
+        const Rules& rules=scenario_rules ? *scenario_rules : base_rules;
         Ini art_ini = load_ini_from_ra2md(dir, "artmd.ini");
         Art art = Art::load(art_ini);
 
@@ -2295,7 +2301,7 @@ UnitRoster load_unit_roster_table(const std::string& dir, const ra2assets::MixFi
                 d.combat.is_vehicle = false;
                 d.combat.speed_cps = speed_to_cps(ru.speed);
             } else if (e.vehicle) {
-                VehicleAssets va = load_vehicle_assets(dir, ra2, ua.pal, e.id);
+                VehicleAssets va = load_vehicle_assets(dir, ra2, ua.pal, e.id,&rules);
                 if (!va.ok) continue;                 // assets missing -> drop
                 d.combat = va.combat;
                 ur.vehicles.push_back(std::move(va));
@@ -7020,8 +7026,7 @@ public:
           // the old run_interactive's named-local Inis kept alive for the whole run).
           // W2-CA-04: a campaign mission's map overlays its rules sections.
           rules_ini_(!cfg.campaign_map.empty() ? camp::load_campaign_rules_ini(dir_, cfg.campaign_map)
-                     : !cfg.mode_rules.empty()  ? camp::load_mode_rules_ini(dir_, cfg.mode_rules)   // W9-03-04
-                                                : load_ini_from_ra2md(dir_, "rulesmd.ini")),
+                     : camp::load_skirmish_rules_ini(dir_,cfg.map_file,cfg.mode_rules)),
           rules_(Rules::load(rules_ini_)),
           art_ini_(load_ini_from_ra2md(dir_, "artmd.ini")),
           art_(Art::load(art_ini_)),
@@ -8918,12 +8923,13 @@ struct MenuArtStore {
 // the call site (run_menu skips this entirely when no_audio).
 std::unique_ptr<MenuAudio> load_menu_music(const std::string& dir) {
     auto ma = std::make_unique<MenuAudio>();
+    int id=-1;
+    ra2assets::WavInfo info;
     try {
         MixFile theme = MixFile::open_path(dir + "theme.mix");
         const MixEntry* e = theme.find("grinder.wav");
-        if (!e) { std::cerr << "[menu-music] grinder.wav not in theme.mix\n"; return ma; }
+        if (!e) throw std::runtime_error("grinder.wav not in theme.mix");
         std::vector<uint8_t> bytes = theme.read(*e);
-        ra2assets::WavInfo info;
         std::vector<int16_t> pcm = ra2assets::load_wav_ima(bytes.data(), bytes.size(), info);
         std::vector<int16_t> mono;
         if (info.channels == 2) {
@@ -8973,14 +8979,14 @@ std::unique_ptr<MenuAudio> load_menu_music(const std::string& dir) {
         ma->sys.mixer = std::make_unique<ra2engine::Mixer>(ma->sys.bank, kAudioRngSeed);
         for (auto& [k, ms2] : gui) ma->sys.mixer->register_sound(k, ms2);
         ra2engine::MixerSound ms;
-        ms.variants.push_back(id);
+        if(id>=0)ms.variants.push_back(id);
         ms.volume = 100;
         ms.global = true;          // non-positional: floor at min_volume, never attenuate
         ms.min_volume = 100;
         ms.range = 1000.0;
         ms.limit = 1;              // single looping instance
         ms.bus = ra2engine::AudioBus::Score;   // [P8] music = ScoreVolume bus (options.md §5)
-        ma->sys.mixer->register_sound("menu:grinder", ms);
+        if(id>=0)ma->sys.mixer->register_sound("menu:grinder", ms);
         ma->sys.out.open();
         ma->sys.enabled = ma->sys.out.ok();
         SDL_Log("[audio] menu handle %s: sdl_devices=%d handles=%d", ma->sys.enabled ? "ok" : "none",

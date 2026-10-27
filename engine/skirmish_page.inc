@@ -195,6 +195,7 @@ public:
                 ra2engine::load_yr_map_catalog(env_install_dir(), "standard"));
             // W5-PRES R-105: hide the YR-only DESERT/NEWURBAN maps (drawn with
             // temperate art) -- a presentation choice, see maplist.hpp.
+            for(const auto& rejected:catalog_->rejected_addons)std::cerr<<"[addon-map] "<<rejected<<"\n";
             const int hidden = ra2engine::filter_lobby_theaters(*catalog_);
             std::cerr << "[lobby] theater filter hid " << hidden << " YR-only maps" << std::endl;
         } catch (const std::exception&) { catalog_.reset(); }
@@ -624,8 +625,8 @@ private:
         int w = 0, h = 0;
         std::vector<uint8_t> rgba;
         try {
-            if (const ra2assets::MixEntry* e = catalog_->maps.find(m->file_name)) {
-                const std::vector<uint8_t> raw = catalog_->maps.read(*e);
+            {
+                const auto raw=ra2engine::read_catalog_map(*catalog_,m->file_name);
                 const std::string text(raw.begin(),raw.end());
                 skp::decode_preview(text,w,h,rgba);
                 const auto ini=Ini::parse(text);
