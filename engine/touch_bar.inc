@@ -275,7 +275,8 @@ SDL_Rect touch_btn_rect(int i) const {
         for (const auto& cp : touch_custom_positions()) {
             if (cp.id == id) {
                 const auto base = ra2engine::TouchBarLayout::button(playfield_w_, kWinH, touch_btn_count(), i);
-                int x = std::clamp(static_cast<int>(cp.x_pct * static_cast<float>(playfield_w_ - base.w) / 100.0f), 0, std::max(0, playfield_w_ - base.w));
+                int total_w = kWinW;
+                int x = std::clamp(static_cast<int>(cp.x_pct * static_cast<float>(total_w - base.w) / 100.0f), 0, std::max(0, total_w - base.w));
                 int y = std::clamp(static_cast<int>(cp.y_pct * static_cast<float>(kWinH - base.h) / 100.0f), 0, std::max(0, kWinH - base.h));
                 return SDL_Rect{x, y, base.w, base.h};
             }

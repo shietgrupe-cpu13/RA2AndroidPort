@@ -270,15 +270,15 @@ bool World::fire_superweapon_at(int house, SuperweaponType type, int cx, int cy,
             for (int i = 0; i < static_cast<int>(units_.size()); ++i) {
                 const Unit& u = units_[static_cast<std::size_t>(i)];
                 if (!u.alive || u.die_time >= 0.0 || u.cargo_of >= 0 || u.is_aircraft ||
-                    !is_enemy(house, u.house) ||
                     om::hypot((u.fx - cx) * kLept, (u.fy - cy) * kLept) > radius)
                     continue;
                 if (type == SuperweaponType::PsychicDominator) {
-                    if (psionic_target_ok(i) && u.an.iron_left_frames <= 0.0 &&
+                    if (is_enemy(house, u.house) && psionic_target_ok(i) && u.an.iron_left_frames <= 0.0 &&
                         u.w7.mc_controller < 0 && u.w7.mc_building < 0)
                         affected.push_back(i);
-                } else if (u.is_infantry) {
-                    affected.push_back(i);
+                } else if (type == SuperweaponType::GeneticConverter) {
+                    if (u.is_infantry && u.an.iron_left_frames <= 0.0)
+                        affected.push_back(i);
                 }
             }
             if (type == SuperweaponType::PsychicDominator) {
