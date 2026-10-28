@@ -546,10 +546,10 @@ void World::set_ally_view(int a, int b, bool allied) {
 }
 
 bool World::is_enemy(int a, int b) const {
-    if (!houses_configured_) return a != b;        // EXACTLY today's behavior
     if (a == b) return false;
-    if (!house_combatant(a) || !house_combatant(b)) return false;   // neutral NEVER an enemy
-    return !are_allied(a, b);
+    if (allied_with(a, b)) return false;
+    if (houses_configured_ && (!house_combatant(a) || !house_combatant(b))) return false;
+    return true;
 }
 
 // --- Victory / defeat [RE: multihouse.md §5, D5] ----------------------------

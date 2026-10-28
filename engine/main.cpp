@@ -5024,6 +5024,18 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
     if (g_fx && g_fx->split_light_) g_fx->draw(ren, tc, cam, W, H, 2);
     // G-84: fog + shroud over every object, under the HUD bars.
     draw_shroud_pass(ren, tc, a.map, world, cam, W, H);
+    bool active_lightning_storm = false;
+    for (const auto& s : world.sw_strikes()) {
+        if (s.kind == 2 && !s.done) {
+            active_lightning_storm = true;
+            break;
+        }
+    }
+    if (active_lightning_storm) {
+        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(ren, 20, 60, 170, 75);
+        SDL_RenderFillRect(ren, nullptr);
+    }
     // HP bars after sprites, before the selection box: alive, non-dying,
     // NON-CARRIED units that are selected or currently damaged. A selected
     // transport also shows its loaded pip row -- filled with the SIZE-SUM
