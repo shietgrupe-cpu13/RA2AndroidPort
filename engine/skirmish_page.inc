@@ -472,7 +472,6 @@ private:
             list_.items.push_back(text_.random_country);
             list_.data.push_back(ra2engine::kLobbyRandom);
             for (int c = 0; c < static_cast<int>(countries_.size()); ++c) {
-                if(row>0 && countries_[c]=="YuriCountry" && st_.rows[row].ai!=ra2engine::kLobbyAiDebug) continue;
                 list_.items.push_back(country_label(c));
                 list_.data.push_back(c);
                 if (c == st_.rows[row].country) cur = static_cast<int>(list_.data.size()) - 1;
@@ -603,11 +602,8 @@ private:
     ra2engine::SkirmishConfig build_config(std::uint32_t seed) const {
         ra2engine::LobbyConvertCtx ctx;
         ctx.countries = countries_;
-        const bool explicit_yuri=st_.rows[0].country>=0 && st_.rows[0].country<static_cast<int>(countries_.size()) &&
-                                 countries_[st_.rows[0].country]=="YuriCountry";
-        ctx.country_allowed=[this,explicit_yuri](int row,const std::string& c){
-            return c!="YuriCountry" || (row==0 && explicit_yuri) ||
-                   (row>0 && st_.rows[row].ai==ra2engine::kLobbyAiDebug);
+        ctx.country_allowed=[](int row,const std::string& c){
+            return true;
         };
         const Rules* r = &rules_;
         ctx.side_of = [r](const std::string& c) { return gf_side_of_country(*r, c); };
