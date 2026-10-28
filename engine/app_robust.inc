@@ -37,6 +37,14 @@ void game_logical_size(int& out_w, int& out_h) {
     int w = 0, h = 0;
     g_platform->output_size(w, h);
     if (w <= 0 || h <= 0) return;
+#ifdef __ANDROID__
+    const char* ws = std::getenv("RA2_WIDESCREEN");
+    if (!ws || ws[0] != '0') {
+        out_w = w;
+        out_h = h;
+        return;
+    }
+#endif
     int lh = 720;
 #ifdef __ANDROID__
     float ddpi = 0, hdpi = 0, vdpi = 0;
