@@ -1917,11 +1917,17 @@ private:
         static const char* ic[3] = {"EVA_IronCurtainReady", "EVA_IronCurtainDetected", "EVA_IronCurtainActivated"};
         static const char* ls[3] = {"EVA_LightningStormReady", "EVA_WeatherDeviceReady", "EVA_LightningStormCreated"};
         static const char* cs[3] = {"EVA_ChronosphereReady", "EVA_ChronosphereDetected", "EVA_ChronosphereActivated"};
+        static const char* pd[3] = {"EVA_PsychicDominatorReady", "EVA_PsychicDominatorDetected", "EVA_PsychicDominatorActivated"};
+        static const char* gm[3] = {"EVA_GeneticMutatorReady", "EVA_GeneticMutatorDetected", "EVA_GeneticConverterActivated"};
+        static const char* pr[3] = {"EVA_PsychicSensorReady", "EVA_PsychicSensorDetected", "EVA_PsychicRevealActivated"};
         switch (t) {
             case T::Nuke: return nuke[what];
             case T::IronCurtain: return ic[what];
             case T::LightningStorm: return ls[what];
             case T::ChronoSphere: return cs[what];
+            case T::PsychicDominator: return pd[what];
+            case T::GeneticConverter: return gm[what];
+            case T::PsychicReveal: return pr[what];
             default: return nullptr;
         }
     }
