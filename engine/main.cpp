@@ -4891,6 +4891,10 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
                 g_turrets->draw(ren, tc, world, b, ba->roster[static_cast<std::size_t>(b.type)].id,
                                 mc ? mc->level : 0, cam, W, H);
             ra2engine::set_obj_tint(nullptr);
+            const bool bldg_hp = b.being_repaired || b.hp < b.max_hp;
+            if (bldg_hp && b.hp > 0 && b.state == ra2engine::Building::State::Idle) {
+                ra2engine::draw_building_hp_bar(ren, b, cam, W, H);
+            }
             const bool tank_bunker = b.alive && b.state == ra2engine::Building::State::Idle &&
                 b.type >= 0 && b.type < static_cast<int>(ba->roster.size()) &&
                 ba->roster[static_cast<std::size_t>(b.type)].tank_bunker;
