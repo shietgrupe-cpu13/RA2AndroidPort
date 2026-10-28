@@ -210,13 +210,17 @@ void World::sync_garrison_owner(int bi) {
         if (type.tank_bunker || type.id=="NABNKR") return;
     }
     const int neutral = neutral_house();
-    if (neutral < 0) return;
-    if (b.occupants.empty() && b.house != neutral) {
-        garrison_events_.push_back({GarrisonEvent::Abandoned, bi, b.house});
-        b.house = neutral;
-        b.garrison_target = -1;
-    } else if (!b.occupants.empty() && (!house_combatant(b.house) || passive_house(b.house))) {
-        b.house = units_[b.occupants.front()].house;
+    if (b.occupants.empty()) {
+        if (neutral >= 0 && b.house != neutral) {
+            garrison_events_.push_back({GarrisonEvent::Abandoned, bi, b.house});
+            b.house = neutral;
+            b.garrison_target = -1;
+        }
+    } else {
+        const int occupant_house = units_[b.occupants.front()].house;
+        if (b.house != occupant_house) {
+            b.house = occupant_house;
+        }
     }
 }
 
