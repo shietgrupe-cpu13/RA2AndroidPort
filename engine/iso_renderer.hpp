@@ -336,4 +336,6 @@ void draw_hp_bar(void* sdl_renderer, const Unit& unit, const Camera& cam, int vi
 void draw_cargo_pips(void* sdl_renderer, const Unit& unit, int pips_filled, int pips_max,
                      const Camera& cam, int view_w, int view_h);
 
+void draw_building_hp_bar(void* sdl_renderer, const Building& b, const Camera& cam, int view_w, int view_h);
+
 }  // namespace ra2engine

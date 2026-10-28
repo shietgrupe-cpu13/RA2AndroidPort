@@ -1082,7 +1082,7 @@ ResolvedUnit resolve_combat_unit(const Rules& rules, const std::string& unit_id)
     r.combat.speed_cps = speed_to_cps(r.speed);
     r.combat.speed_type = w5_speed_type_index(rules.section_string(unit_id, "SpeedType", ""));   // W5-B R-062
     r.combat.strength = rules.strength(unit_id);
-    r.combat.sight = rules.sight(unit_id);  // [RE: shroud.md §2] reveal radius
+    r.combat.sight = std::max(5, rules.sight(unit_id));  // [RE: shroud.md §2] reveal radius
     r.combat.armor = rules.armor(unit_id);
     // W6 fix #2: rules id + the targeting type data (map overrides merged in a
     // campaign: its Rules is rulesmd with the scenario overlaid).
@@ -2835,7 +2835,7 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
         d.fw = d.fh = 1;
         art.foundation(art_id, d.fw, d.fh);
         d.strength = rules.strength(id);
-        d.sight = rules.sight(id);  // [RE: shroud.md §2] reveal radius
+        d.sight = std::max(5, rules.sight(id));  // [RE: shroud.md §2] reveal radius
         d.grants_map_reveal = rules.spy_sat(id);  // [RE: shroud.md §7A] SpySat= whole-map reveal (inert: no rostered SpySat)
         d.armor_ix = ra2engine::armor_index(rules.armor(id));
         d.cost = rules.cost(id);

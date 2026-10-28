@@ -765,6 +765,36 @@ void draw_hp_bar(void* sdl_renderer, const Unit& unit, const Camera& cam, int vi
     }
 }
 
+void draw_building_hp_bar(void* sdl_renderer, const Building& b, const Camera& cam, int view_w, int view_h) {
+    if (b.max_hp <= 0) return;
+    SDL_Renderer* renderer = static_cast<SDL_Renderer*>(sdl_renderer);
+    const int bar_w = 40;
+
+    int cx, cy;
+    tile_center_screen(static_cast<double>(b.cx), static_cast<double>(b.cy), 0, cam, cx, cy);
+    const int bar_cy = cy - 32;
+
+    SDL_Rect bg{cx - bar_w / 2, bar_cy - kHpBarH / 2, bar_w, kHpBarH};
+    if (bg.x + bg.w <= 0 || bg.y + bg.h <= 0 || bg.x >= view_w || bg.y >= view_h) return;
+
+    SDL_SetRenderDrawColor(renderer, 20, 20, 20, 255);
+    SDL_RenderFillRect(renderer, &bg);
+
+    const int hp = b.hp < 0 ? 0 : b.hp;
+    int fill_w = static_cast<int>(static_cast<long long>(hp) * bar_w / b.max_hp);
+    if (fill_w > bar_w) fill_w = bar_w;
+    if (fill_w < 0) fill_w = 0;
+    if (b.hp > 0 && fill_w < 1) fill_w = 1;
+    if (fill_w > 0) {
+        SDL_Rect fg{bg.x, bg.y, fill_w, kHpBarH};
+        const double frac = static_cast<double>(b.hp) / b.max_hp;
+        if (frac > g_condition_yellow) SDL_SetRenderDrawColor(renderer, 40, 220, 40, 255);
+        else if (frac > g_condition_red) SDL_SetRenderDrawColor(renderer, 230, 210, 40, 255);
+        else SDL_SetRenderDrawColor(renderer, 220, 40, 40, 255);
+        SDL_RenderFillRect(renderer, &fg);
+    }
+}
+
 void draw_cargo_pips(void* sdl_renderer, const Unit& unit, int pips_filled, int pips_max,
                      const Camera& cam, int view_w, int view_h) {
     if (pips_max <= 0) return;
