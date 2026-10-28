@@ -431,7 +431,7 @@ void World::step_building_combat(double dt) {
             if (j < 0 || j >= nu) return false;
             const Unit& v = units_[j];
             if (!v.alive || v.die_time >= 0.0 || !unit_combat_exposed(v)) return false;
-            if (v.house == b.house || allied_with(b.house, v.house)) return false;
+            if (v.house == b.house || are_allied(b.house, v.house) || allied_with(b.house, v.house)) return false;
             if (t.mind_control && (playfield_.campaign || !psionic_target_ok(j) ||
                 v.an.iron_left_frames > 0 || v.w7.mc_controller >= 0 || v.w7.mc_building >= 0 ||
                 static_cast<int>(b.w7.mc_victims.size()) >= std::max(1,defense_weapon(t, b, 0).damage))) return false;
