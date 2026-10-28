@@ -258,6 +258,22 @@ inline const ra2assets::TheaterChain& art_chain() {
     if (g_art_chain) return *g_art_chain;
     return *ra2assets::theater_chain("TEMPERATE");
 }
+inline int client_unit_hp_mode() {
+    static int mode = -1;
+    if (mode < 0) {
+        if (const char* env = std::getenv("RA2_UNIT_HP_MODE")) mode = std::atoi(env);
+        else mode = 1;
+    }
+    return mode;
+}
+inline int client_bldg_hp_mode() {
+    static int mode = -1;
+    if (mode < 0) {
+        if (const char* env = std::getenv("RA2_BLDG_HP_MODE")) mode = std::atoi(env);
+        else mode = 1;
+    }
+    return mode;
+}
 #include "asset_search.inc"   // W3-FIX-A: one MIX search list per theater
 
 // Which map load_assets should read [RE: maps.md §7 rule 2]. The DEFAULT
@@ -4891,7 +4907,8 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
                 g_turrets->draw(ren, tc, world, b, ba->roster[static_cast<std::size_t>(b.type)].id,
                                 mc ? mc->level : 0, cam, W, H);
             ra2engine::set_obj_tint(nullptr);
-            const bool bldg_hp = b.being_repaired || b.hp < b.max_hp;
+            const int bhp_m = client_bldg_hp_mode();
+            const bool bldg_hp = bhp_m == 2 ? true : (bhp_m == 1 ? (b.being_repaired || b.hp < b.max_hp) : false);
             if (bldg_hp && b.hp > 0 && b.state == ra2engine::Building::State::Idle) {
                 ra2engine::draw_building_hp_bar(ren, b, cam, W, H);
             }
@@ -5062,7 +5079,8 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
             }
         } else {
             const int idx = static_cast<int>(&u - us.data());
-            const bool show_hp = usel(u) || u.hp < u.max_hp;
+            const int uhp_m = client_unit_hp_mode();
+            const bool show_hp = uhp_m == 2 ? true : (uhp_m == 1 ? (usel(u) || u.hp < u.max_hp) : false);
             const bool show_cargo = usel(u) && u.passengers_max > 0;
             if (show_hp || show_cargo) {
                 const auto pose = render_pose(idx, u);

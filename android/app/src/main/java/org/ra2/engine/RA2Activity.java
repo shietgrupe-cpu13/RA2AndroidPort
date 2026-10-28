@@ -92,6 +92,10 @@ public class RA2Activity extends SDLActivity implements AudioManager.OnAudioFocu
             Os.setenv("RA2_TOUCH_DOCK",dock==1?"left_side":(dock==2?"bottom_right":"bottom_left"),true);
             Os.setenv("RA2_WIDESCREEN",controls.getBoolean("widescreen_mode",true)?"1":"0",true);
             Os.setenv("RA2_FPS_LIMIT",Integer.toString(controls.getInt("fps_limit",60)),true);
+            int unitHp = controls.getInt("unit_hp_mode", 1);
+            int bldgHp = controls.getInt("bldg_hp_mode", 1);
+            Os.setenv("RA2_UNIT_HP_MODE", Integer.toString(unitHp), true);
+            Os.setenv("RA2_BLDG_HP_MODE", Integer.toString(bldgHp), true);
             int ow = controls.getInt("override_screen_width", 0);
             int oh = controls.getInt("override_screen_height", 0);
             if (ow > 0 && oh > 0) {
