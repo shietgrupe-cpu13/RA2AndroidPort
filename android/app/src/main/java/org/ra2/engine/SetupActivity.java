@@ -30,6 +30,8 @@ import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 import android.widget.RelativeLayout;
 import android.widget.ScrollView;
+import android.widget.Spinner;
+import android.widget.ArrayAdapter;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -574,24 +576,66 @@ public class SetupActivity extends Activity {
 
     private void showGraphicsSettings() {
         SharedPreferences p = getSharedPreferences("interface", MODE_PRIVATE);
-        boolean widescreen = p.getBoolean("widescreen_mode", true);
-
-        CheckBox wsCheck = new CheckBox(this);
-        wsCheck.setText("Widescreen / Fullscreen Fill (Expand viewport to device aspect ratio)");
-        wsCheck.setChecked(widescreen);
-        wsCheck.setTextColor(Color.rgb(240, 244, 248));
+        int aspectMode = p.getInt("display_aspect_mode", 1); // 0=Fit, 1=Fill, 2=Stretch
+        int unitHp = p.getInt("unit_hp_mode", 1); // 0=Off, 1=Selected/Damaged, 2=Always
+        int bldgHp = p.getInt("bldg_hp_mode", 1); // 0=Off, 1=Repair/Damaged Only, 2=Always
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(16), dp(16), dp(16), dp(16));
         content.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{theme()[0], theme()[1], theme()[0]}));
-        content.addView(wsCheck);
+
+        TextView aspectLabel = new TextView(this);
+        aspectLabel.setText("DISPLAY ASPECT & STRETCH MODE:");
+        aspectLabel.setTextColor(Color.rgb(135, 163, 181));
+        aspectLabel.setTextSize(12);
+        content.addView(aspectLabel);
+
+        Spinner aspectSpinner = new Spinner(this);
+        String[] aspectOpts = {"16:9 Widescreen Fit (Pillarboxed)", "Widescreen Fill (Expand to Screen)", "Stretch to Fullscreen (Stretch Screen)"};
+        ArrayAdapter<String> aspectAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, aspectOpts);
+        aspectSpinner.setAdapter(aspectAdapter);
+        aspectSpinner.setSelection(aspectMode);
+        content.addView(aspectSpinner);
+
+        TextView unitHpLabel = new TextView(this);
+        unitHpLabel.setText("UNIT HP BARS:");
+        unitHpLabel.setTextColor(Color.rgb(135, 163, 181));
+        unitHpLabel.setTextSize(12);
+        unitHpLabel.setPadding(0, dp(12), 0, 0);
+        content.addView(unitHpLabel);
+
+        Spinner unitHpSpinner = new Spinner(this);
+        String[] hpOpts = {"Off", "Selected / Damaged", "Always On"};
+        ArrayAdapter<String> unitHpAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, hpOpts);
+        unitHpSpinner.setAdapter(unitHpAdapter);
+        unitHpSpinner.setSelection(unitHp);
+        content.addView(unitHpSpinner);
+
+        TextView bldgHpLabel = new TextView(this);
+        bldgHpLabel.setText("BUILDING HP BARS:");
+        bldgHpLabel.setTextColor(Color.rgb(135, 163, 181));
+        bldgHpLabel.setTextSize(12);
+        bldgHpLabel.setPadding(0, dp(12), 0, 0);
+        content.addView(bldgHpLabel);
+
+        Spinner bldgHpSpinner = new Spinner(this);
+        String[] bldgHpOpts = {"Off", "Repair / Damaged Only (Shown When Repairing)", "Always On"};
+        ArrayAdapter<String> bldgHpAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, bldgHpOpts);
+        bldgHpSpinner.setAdapter(bldgHpAdapter);
+        bldgHpSpinner.setSelection(bldgHp);
+        content.addView(bldgHpSpinner);
 
         new AlertDialog.Builder(this)
             .setTitle("🖥️ Graphics & Display Settings")
             .setView(content)
             .setPositiveButton("Save", (dialog, which) -> {
-                p.edit().putBoolean("widescreen_mode", wsCheck.isChecked()).apply();
+                p.edit()
+                    .putInt("display_aspect_mode", aspectSpinner.getSelectedItemPosition())
+                    .putInt("unit_hp_mode", unitHpSpinner.getSelectedItemPosition())
+                    .putInt("bldg_hp_mode", bldgHpSpinner.getSelectedItemPosition())
+                    .putBoolean("widescreen_mode", aspectSpinner.getSelectedItemPosition() > 0)
+                    .apply();
             })
             .setNegativeButton("Cancel", null)
             .show();
