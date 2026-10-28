@@ -92,6 +92,12 @@ public class RA2Activity extends SDLActivity implements AudioManager.OnAudioFocu
             Os.setenv("RA2_TOUCH_DOCK",dock==1?"left_side":(dock==2?"bottom_right":"bottom_left"),true);
             Os.setenv("RA2_WIDESCREEN",controls.getBoolean("widescreen_mode",true)?"1":"0",true);
             Os.setenv("RA2_FPS_LIMIT",Integer.toString(controls.getInt("fps_limit",60)),true);
+            int ow = controls.getInt("override_screen_width", 0);
+            int oh = controls.getInt("override_screen_height", 0);
+            if (ow > 0 && oh > 0) {
+                Os.setenv("RA2_SCREEN_WIDTH", Integer.toString(ow), true);
+                Os.setenv("RA2_SCREEN_HEIGHT", Integer.toString(oh), true);
+            }
             Os.setenv("RA2_COMMAND_MENU",
                 getSharedPreferences("interface",MODE_PRIVATE).getBoolean("command_menu",false)?"1":"0",true);
         } catch(android.system.ErrnoException e) { Log.w(TAG,"Menu preference unavailable",e); }

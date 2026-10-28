@@ -17,6 +17,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.DocumentsContract;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -580,19 +581,27 @@ public class SetupActivity extends Activity {
         int unitHp = p.getInt("unit_hp_mode", 1); // 0=Off, 1=Selected/Damaged, 2=Always
         int bldgHp = p.getInt("bldg_hp_mode", 1); // 0=Off, 1=Repair/Damaged Only, 2=Always
 
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int devW = Math.max(dm.widthPixels, dm.heightPixels);
+        int devH = Math.min(dm.widthPixels, dm.heightPixels);
+
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(16), dp(16), dp(16), dp(16));
         content.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{theme()[0], theme()[1], theme()[0]}));
 
         TextView aspectLabel = new TextView(this);
-        aspectLabel.setText("DISPLAY ASPECT & STRETCH MODE:");
+        aspectLabel.setText("DISPLAY ASPECT & STRETCH MODE (" + devW + "x" + devH + "):");
         aspectLabel.setTextColor(Color.rgb(135, 163, 181));
         aspectLabel.setTextSize(12);
         content.addView(aspectLabel);
 
         Spinner aspectSpinner = new Spinner(this);
-        String[] aspectOpts = {"16:9 Widescreen Fit (Pillarboxed)", "Widescreen Fill (Expand to Screen)", "Stretch to Fullscreen (Stretch Screen)"};
+        String[] aspectOpts = {
+            "16:9 Widescreen Fit (Pillarboxed)",
+            "Widescreen Fill (" + devW + "x" + devH + " Native)",
+            "Stretch to Fullscreen (True Phone Stretch)"
+        };
         ArrayAdapter<String> aspectAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, aspectOpts);
         aspectSpinner.setAdapter(aspectAdapter);
         aspectSpinner.setSelection(aspectMode);
@@ -630,11 +639,14 @@ public class SetupActivity extends Activity {
             .setTitle("🖥️ Graphics & Display Settings")
             .setView(content)
             .setPositiveButton("Save", (dialog, which) -> {
+                int mode = aspectSpinner.getSelectedItemPosition();
                 p.edit()
-                    .putInt("display_aspect_mode", aspectSpinner.getSelectedItemPosition())
+                    .putInt("display_aspect_mode", mode)
+                    .putInt("override_screen_width", mode > 0 ? devW : 1280)
+                    .putInt("override_screen_height", mode > 0 ? devH : 720)
                     .putInt("unit_hp_mode", unitHpSpinner.getSelectedItemPosition())
                     .putInt("bldg_hp_mode", bldgHpSpinner.getSelectedItemPosition())
-                    .putBoolean("widescreen_mode", aspectSpinner.getSelectedItemPosition() > 0)
+                    .putBoolean("widescreen_mode", mode > 0)
                     .apply();
             })
             .setNegativeButton("Cancel", null)

@@ -376,6 +376,11 @@ void draw_bomb_icons(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2en
             if(g_pips->has_bomb && bomb_frame(b.bomb_frame)>=0 && bomb_visible(b.bomb_house,bx,by,bz))
                 blit_shp_centered(ren,tc,"w6bomb:"+std::to_string(bomb_frame(b.bomb_frame)),g_pips->bomb,
                     bomb_frame(b.bomb_frame),g_pips->status_pal,point.x+cam.x,point.y+cam.y);
+            if (b.c4_applied || b.c4_frame >= 0) {
+                if (g_pips && g_pips->has_bomb) {
+                    blit_shp_centered(ren, tc, "c4-charge", g_pips->bomb, 0, g_pips->status_pal, point.x + cam.x, point.y + cam.y - 12);
+                }
+            }
             if(g_pips->has_wrench && b.being_repaired) {
                 const int frame=ra2engine::repair_wrench_frame(world.repair_frame());
                 blit_shp_centered(ren,tc,"repair-wrench:"+std::to_string(frame),g_pips->wrench,
