@@ -18,6 +18,7 @@
 
 std::unique_ptr<ra2assets::UFont> g_hud_font_storage;
 const ra2assets::UFont* g_hud_font = nullptr;
+extern ra2engine::Settings* g_user_settings;
 // CSF TXT_READY / TXT_HOLD (FUN_0069D770), refreshed from ra2.csf by GameScene.
 std::string g_txt_ready = "Ready", g_txt_hold = "On Hold";
 constexpr int kHudTrimTop = 3;      // empty rows at the top of every Latin cell
@@ -39,8 +40,9 @@ void hud_font_load(const ra2assets::MixFile& ra2) {
 
 // The UI colour of the player's side (sidec02 = Soviet) [CONFIRMED above].
 inline SDL_Color hud_ui_color() {
-    const bool soviet = g_sidebar_mix && std::string(g_sidebar_mix) == "sidec02.mix";
-    return soviet ? SDL_Color{255, 255, 0, 255} : SDL_Color{164, 210, 255, 255};
+    // Retail UI text uses Allied blue; Soviet and Yuri use the yellow text ramp.
+    const bool allied = !g_sidebar_mix || std::string(g_sidebar_mix) == "sidec01.mix";
+    return allied ? SDL_Color{164, 210, 255, 255} : SDL_Color{255, 255, 0, 255};
 }
 
 inline int hud_text_width(const std::string& s) {
@@ -85,6 +87,9 @@ SDL_Rect hud_text_rect(const std::string& s, int x, int y, int align) {
 void hud_text(SDL_Renderer* ren, ra2engine::TextureCache& tc, const std::string& s, int x, int y,
               SDL_Color col, int align = kHudLeft, bool backing = false, bool shadow = true,
               double scale = 1.0) {
+    // Preserve the retail font and HUD effects at every resolution; size is a
+    // separate, player-controlled setting.
+    if (g_user_settings) scale *= std::clamp(g_user_settings->hud_text_size, 100, 160) / 100.0;
     if (backing) {
         SDL_Rect r = hud_text_rect(s, x, y, align);
         if (scale != 1.0) {

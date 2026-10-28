@@ -20,11 +20,12 @@ inline bool unit_airborne(const Unit& v) {
 // Self-area deployment has its own ability owner; a cached frozen flag must
 // not admit ordinary primary fire during the deployment boundary.
 inline bool deployment_owns_fire(const Unit& u) {
-    return u.deployed && (u.w7.t.deploy_area_fire ||
+    return u.deployed && ((u.is_aircraft && u.deploy_fire && u.altitude>0.0) || u.w7.t.deploy_area_fire ||
         (u.abil.deployer && u.abil.deploy.valid && u.abil.deploy.rad_level>0));
 }
 inline double unit_weapon_facing(const Unit& u) {
-    return u.is_aircraft || !u.w7.t.has_turret ? u.body_facing : u.turret_facing;
+    const bool turret=u.w7.t.has_turret && (!u.is_aircraft || (u.deploy_fire && u.deployed && u.altitude<=0.0));
+    return turret ? u.turret_facing : u.body_facing;
 }
 
 // fv7c (13a #2) [RE: FUN_006F6750 head `if (weapon->Range == -0x200) return

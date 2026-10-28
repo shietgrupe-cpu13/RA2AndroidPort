@@ -51,7 +51,7 @@ public:
     void load(const ra2assets::MixFile& ra2, const Ini& map_ini, const Ini& rules_ini, const Ini& art_ini,
               const ra2assets::MapFile& map) {
         objects_.clear(); smudges_.clear(); overlays_.clear(); wall_ids_.clear(); crush_ids_.clear(); block_.clear(); lights_.clear();
-        decks_.clear(); deck_cells_.clear();
+        decks_.clear(); deck_cells_.clear(); deck_depth_.clear();
         missing_ = placed_ = civ_ = 0;
         ra2_ = &ra2;
         rules_ = &rules_ini;
@@ -144,6 +144,12 @@ public:
                 if (high_bridge) {   // W5-PRES R-100: the deck joins the object sort
                     decks_.push_back(static_cast<int>(overlays_.size()));
                     deck_cells_.insert(c.y * 1000 + c.x);
+                    int xs[4], ys[4];
+                    if (ra2engine::high_bridge_section_cells(id, c.x, c.y, xs, ys))
+                        for (int k = 0; k < 4; ++k) {
+                            auto& depth = deck_depth_[ys[k]*1000+xs[k]];
+                            depth = std::max(depth, double(c.x+c.y)+0.99);
+                        }
                 }
                 overlays_.push_back(o);
                 if (wall) { wall_ids_[c.y * 1000 + c.x] = id; block_.push_back({c.x, c.y}); }
@@ -329,6 +335,10 @@ public:
     }
     const std::vector<int>& decks() const { return decks_; }
     const ra2assets::MapFile* map() const { return map_; }
+    double deck_depth(int x, int y) const {
+        const auto it = deck_depth_.find(y*1000+x);
+        return it == deck_depth_.end() ? -1.0 : it->second;
+    }
     bool deck_cell(int x, int y) const { return deck_cells_.count(y * 1000 + x) != 0; }
     void set_layer_decks(bool on) { layer_decks_ = on; }
     bool layer_decks() const { return layer_decks_; }
@@ -537,6 +547,7 @@ private:
     std::vector<Obj> objects_, smudges_, overlays_;
     std::vector<int> decks_;               // W5-PRES R-100: overlays_ indices of high decks
     std::map<std::string, Obj> trees_;     // W5-PRES R-047: Mirage disguise art
+    std::map<int, double> deck_depth_;
     std::set<int> deck_cells_;             // 1000*y + x
     bool layer_decks_ = true;
     std::vector<std::string> names_;   // [OverlayTypes] by runtime index

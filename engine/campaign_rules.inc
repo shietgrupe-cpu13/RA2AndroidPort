@@ -132,7 +132,7 @@ PlayerRules campaign_player_rules(const std::string& dir, const MixFile& ra2, co
     pr.country = up(side) == "NOD" ? "Russians" : "Americans";
     try {
         const Ini map = load_map_ini(dir, map_name);
-        const Ini ra2r = load_ra2_rules_ini(dir, ra2);
+        const Ini ra2r = yr_map(map_name) ? load_ini_from_ra2md(dir, "rulesmd.ini") : load_ra2_rules_ini(dir, ra2);
         const std::string house = trim_comment(map.get("Basic", "Player", ""));
         pr.tech_level = map.get_int(house, "TechLevel", 10);
         const std::string country = trim_comment(map.get(house, "Country", ""));

@@ -1,4 +1,8 @@
 #include "doctest.h"
+#include "ra2assets/asset_fs.hpp"
+#include "ra2assets/vxl.hpp"
+#include "ra2assets/hva.hpp"
+#include "ra2assets/shp.hpp"
 #include "world.hpp"
 #include "harvest.hpp"
 #include "savegame.hpp"
@@ -960,7 +964,9 @@ TEST_CASE("Yuri core: ground force fire stops at range instead of marching into 
     CHECK(w.units()[0].fx==x);CHECK(w.units()[0].fy==y);
 }
 TEST_CASE("Yuri core: Psychic Tower combat captures to capacity and releases after power off") {
-    Rig r;World w(r.map);BuildingTypeDef d;d.id="YAPSYT";d.mind_control=true;
+    for (bool campaign : {false,true}) {
+    Rig r;World w(r.map); w.set_playfield(campaign,false,0,0,0,0,0);
+    BuildingTypeDef d;d.id="YAPSYT";d.mind_control=true;
     d.strength=100;d.armed=true;d.weapon[0].valid=true;d.weapon[0].damage=2;
     d.weapon[0].range=10;d.weapon[0].rof=1;d.weapon[0].verses.assign(11,100);
     w.set_building_types({d});w.add_building(0,8,8,1,1,0,100,0,0,true);
@@ -973,6 +979,7 @@ TEST_CASE("Yuri core: Psychic Tower combat captures to capacity and releases aft
     loaded.buildings()[0].power_off=true;loaded.step(1.0/15.0);
     CHECK(loaded.buildings()[0].w7.mc_victims.empty());
     for(const auto& u:loaded.units()){CHECK(u.house==1);CHECK(u.w7.mc_building==-1);}
+    }
 }
 
 TEST_CASE("Yuri core: captured units leave their previous AI team immediately") {
@@ -1711,4 +1718,92 @@ TEST_CASE("Yuri superweapons: refreshed reveal radius preserves a ready charge")
     CHECK(w.sw_ready(0,SuperweaponType::PsychicReveal));
     REQUIRE(w.fire_superweapon_at(0,SuperweaponType::PsychicReveal,10,10));
     CHECK(w.explored_at(0,13,10));
+}
+
+TEST_CASE("Yuri core: deployed slave miner keeps a reachable field beyond two cells") {
+    Rig r; World w(r.map); BuildingTypeDef d; d.id="YAREFN"; d.fw=d.fh=2;
+    d.strength=100; d.slave_count=2; d.slave_combat=unit("SLAV");
+    d.slave_combat.is_infantry=true;
+    w.set_economy({d},{0},OreValues{},1000,0,0);
+    auto miner=unit("SMIN"); miner.deploys_into="YAREFN"; w.set_undeploy_unit(0,miner);
+    w.add_building(0,2,2,2,2,0,100,0,0,true);
+    w.ore().set(10,10,OreKind::Ore,5,0);
+    w.step_yuri_workers();
+    CHECK(w.buildings()[0].alive);
+    CHECK(w.buildings()[0].state==Building::State::Idle);
+    REQUIRE(w.units().size()==2);
+    for(const auto& u:w.units()) CHECK(u.w7.slave_manager==0);
+}
+
+TEST_CASE("IFV appearance: passenger modes select named turret indexes from mixed case INI") {
+    const auto ini=ra2assets::Ini::parse("[FV]\nNormalTurretWeapon=0\nNormalTurretIndex=0\nRepairTurretWeapon=1\nRepairTurretIndex=1\nMachineGunTurretWeapon=2\nMachineGunTurretIndex=2\nRadCannonTurretWeapon=9\nRadCannonTurretIndex=3\nUnrelated=8\n");
+    auto modes=ifv_turret_mapping(ini,"FV");REQUIRE(modes.size()==4);
+    CHECK(modes[0]==0);CHECK(modes[1]==1);CHECK(modes[2]==2);CHECK(modes[9]==3);
+    if(ra2fixture::assets_available()) {
+        modes=ifv_turret_mapping(ra2fixture::rulesmd_ini(),"FV");
+        CHECK(modes.at(0)==0);CHECK(modes.at(1)==2);CHECK(modes.at(2)==1);CHECK(modes.at(9)==3);
+    }
+}
+TEST_CASE("Siege Chopper: simple deployer lands, fires artillery, stays grounded and lifts on move") {
+    const auto ini=ra2assets::Ini::parse("[VehicleTypes]\n0=SCHP\n[SCHP]\nTurret=yes\nIsSimpleDeployer=yes\nDeployFire=yes\nPrimary=Gun\nSecondary=Cannon\n[Gun]\nDamage=10\nROF=15\nRange=4\nProjectile=Shell\nWarhead=WH\n[Cannon]\nDamage=100\nROF=15\nRange=12\nProjectile=Shell\nWarhead=WH\n[Shell]\nAG=yes\n[WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n");
+    const auto rules=ra2assets::Rules::load(ini);auto c=unit("SCHP");
+    fill_unit_combat_extras(rules,"SCHP",resolve_type_weapons(rules,"SCHP"),c);
+    REQUIRE(c.deploy_fire);CHECK(c.deploy_fire_slot==1);
+    Rig r;World w(r.map);c.image="SCHP";c.strength=500;c.is_vehicle=true;c.is_aircraft=true;
+    c.cruise_altitude=100;c.climb_rate=100;c.descend_rate=100;c.flight_speed=2;
+    c.an.hover_attack=true;c.an.landable=true;c.rot=5;c.turret=true;
+    w.add_combat_unit(8,8,0,c);auto& chopper=w.units()[0];
+    chopper.altitude=100;chopper.flight_state=FlightState::Cruising;
+    REQUIRE(w.order_deploy(0));CHECK(chopper.deployed);CHECK(chopper.flight_state==FlightState::Descending);
+    CHECK(deployment_owns_fire(chopper));
+    for(int f=0;f<30;++f)w.step(1.0/15.0);
+    CHECK(w.units()[0].altitude==0);CHECK(w.units()[0].flight_state==FlightState::Grounded);
+    auto target=unit("TARGET");target.strength=10000;w.add_combat_unit(13,8,1,target);
+    CHECK(unit_weapon_for_unit(w.units()[0],w.units()[1])==1);
+    w.group_attack(0,{0},1);
+    for(int f=0;f<60;++f)w.step(1.0/15.0);
+    CHECK(unit_weapon_facing(w.units()[0])==w.units()[0].turret_facing);
+    CHECK(w.units()[0].altitude==0);CHECK(w.units()[0].deployed);CHECK(w.units()[1].hp<10000);
+    World copy(r.map);REQUIRE(save::load_world(copy,save::save_world(w)));
+    CHECK(copy.units()[0].deployed);CHECK(copy.units()[0].altitude==0);
+    w.order_unit_move(0,10,10);CHECK_FALSE(w.units()[0].deployed);
+    CHECK(w.units()[0].flight_state==FlightState::TakingOff);
+    for(int f=0;f<30;++f)w.step(1.0/15.0);
+    CHECK(w.units()[0].altitude>0);
+}
+TEST_CASE("Siege Chopper: deployment refuses another unit's landing cell") {
+    Rig r;World w(r.map);auto c=unit("SCHP");c.is_aircraft=true;c.is_vehicle=true;c.deploy_fire=true;
+    w.add_combat_unit(8,8,0,c);w.units()[0].altitude=100;w.units()[0].flight_state=FlightState::Cruising;
+    w.add_combat_unit(8,8,1,unit("BLOCKER"));
+    CHECK_FALSE(w.order_deploy(0));CHECK_FALSE(w.units()[0].deployed);
+}
+
+TEST_CASE("missile animation: recycled V3, Dreadnought and Boomer slots each get a new launch edge") {
+    RocketLaunchTracker tracker;
+    for(std::size_t slot=0;slot<3;++slot) {
+        CHECK_FALSE(tracker.observe(slot,true,false)); // pause and tilt
+        CHECK(tracker.observe(slot,true,true));
+        CHECK_FALSE(tracker.observe(slot,true,true)); // trail, not another launch
+        CHECK_FALSE(tracker.observe(slot,false,false)); // dead or docked
+        CHECK(tracker.observe(slot,true,true)); // reused, including late visibility
+        CHECK_FALSE(tracker.observe(slot,true,false)); // new tilt without a dead observation
+        CHECK(tracker.observe(slot,true,true));
+    }
+}
+
+TEST_CASE("vehicle presentation: retail deployment, missile and IFV variant assets decode") {
+    if(!ra2fixture::assets_available() || !ra2fixture::ra2_available()){MESSAGE("retail assets absent");return;}
+    ra2assets::AssetFS fs(ra2fixture::install_base()+"/",ra2assets::theater_chain("TEMPERATE"));
+    for(const char* image:{"schp","schd","v3rocket","dmisl","bsubmisl","fvtur1","fvtur2","fvtur3"}) {
+        CAPTURE(image);std::vector<std::uint8_t> raw;
+        REQUIRE(fs.read(std::string(image)+".vxl",raw));
+        CHECK_FALSE(ra2assets::load_vxl(raw.data(),raw.size()).sections.empty());
+        REQUIRE(fs.read(std::string(image)+".hva",raw));
+        CHECK_FALSE(ra2assets::load_hva(raw.data(),raw.size()).frames.empty());
+    }
+    for(const char* image:{"schpdepl","v3takoff","v3trail"}) {
+        CAPTURE(image);std::vector<std::uint8_t> raw;REQUIRE(fs.read(std::string(image)+".shp",raw));
+        const auto shp=ra2assets::ShpFile::load(raw);REQUIRE(shp.count()>1);
+        CHECK_FALSE(shp.decode_indexed(0).empty());CHECK_FALSE(shp.decode_indexed(shp.count()/2-1).empty());
+    }
 }

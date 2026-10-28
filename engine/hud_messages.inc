@@ -112,6 +112,8 @@
             if (!rp_flag(rules_, sw, "ShowTimer")) break;
             const std::string ui = rules_.section_string(sw, "UIName", "");
             name = ui.empty() ? sw : camp::csf_text(dir_, ui);
+            if (name == ui || name == sw)
+                name = rules_.section_string(sw, "Name", ra2engine::superweapon_type_name(t));
             break;
         }
         return sw_timer_names_[static_cast<int>(t)] = name;

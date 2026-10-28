@@ -615,7 +615,7 @@ public class SetupActivity extends Activity {
         content.addView(unitHpLabel);
 
         Spinner unitHpSpinner = new Spinner(this);
-        String[] hpOpts = {"Off", "Selected / Damaged", "Always On"};
+        String[] hpOpts = {"Off", "Native bars: selected / damaged / hovered", "Always On"};
         ArrayAdapter<String> unitHpAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, hpOpts);
         unitHpSpinner.setAdapter(unitHpAdapter);
         unitHpSpinner.setSelection(unitHp);
@@ -629,7 +629,7 @@ public class SetupActivity extends Activity {
         content.addView(bldgHpLabel);
 
         Spinner bldgHpSpinner = new Spinner(this);
-        String[] bldgHpOpts = {"Off", "Repair / Damaged Only (Shown When Repairing)", "Always On"};
+        String[] bldgHpOpts = {"Off", "Native bars: selected / damaged / repairing", "Always On"};
         ArrayAdapter<String> bldgHpAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, bldgHpOpts);
         bldgHpSpinner.setAdapter(bldgHpAdapter);
         bldgHpSpinner.setSelection(bldgHp);

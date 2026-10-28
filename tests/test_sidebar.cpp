@@ -152,3 +152,41 @@ TEST_CASE("sidebar layout: Yuri shares Soviet controls and preserves its style i
     CHECK(yuri.diplo_btn.x==soviet.diplo_btn.x);CHECK(yuri.cameos.size()==soviet.cameos.size());
     set_sidebar_style(0);
 }
+
+TEST_CASE("sidebar: compact chrome retains aligned hit targets and even strip limits") {
+    struct Reset { ~Reset(){set_sidebar_preferences(100,0);} } reset;
+    std::vector<int> types;for(int i=0;i<80;++i)types.push_back(i);
+    for(int size : {60,75,90,100,125})for(int count : {6,8,10,12,30,60}) {
+        set_sidebar_preferences(size,count);
+        auto lay=SidebarLayout::compute(1280,720,types,100);
+        CHECK(lay.bar.w==doctest::Approx(168*size/100.0).epsilon(0.01));
+        CHECK(lay.side2_rows*2<=count);CHECK(lay.cameos.size()==2*lay.side2_rows);
+        CHECK(lay.top_row==lay.max_top_row(80));
+        for(int i=0;i<int(lay.cameos.size());++i) {
+            const auto& r=lay.cameos[i].rect;
+            CHECK(lay.cameo_at(r.x+r.w/2,r.y+r.h/2)==i);
+            CHECK(lay.contains(r.x+r.w/2,r.y+r.h/2));
+            CHECK(r.y+r.h<=720);
+        }
+        for(int i=0;i<4;++i)CHECK(lay.tab_at(lay.tabs[i].x+2,lay.tabs[i].y+2)==i);
+        auto n=lay.unscaled();CHECK(n.scale==1);CHECK(n.cameos[0].rect.w==60);
+    }
+    set_sidebar_preferences(1,9);CHECK(sidebar_scale()==60);CHECK(sidebar_cells()==8);
+}
+
+TEST_CASE("sidebar: phone cameo size and count stay independent of resolution override") {
+    struct Reset { ~Reset(){set_sidebar_reference_height(0);set_sidebar_preferences(100,0);} } reset;
+    set_sidebar_reference_height(480);set_sidebar_preferences(75,6);
+    std::vector<int> types;for(int i=0;i<40;++i)types.push_back(i);
+    const auto small=SidebarLayout::compute(1280,720,types);
+    const auto large=SidebarLayout::compute(1920,1080,types);
+    CHECK(small.cameos.size()==6);CHECK(large.cameos.size()==6);
+    CHECK(double(small.cameos[0].rect.h)/720==doctest::Approx(double(large.cameos[0].rect.h)/1080).epsilon(0.02));
+    CHECK(double(small.bar.w)/720==doctest::Approx(double(large.bar.w)/1080).epsilon(0.02));
+    for(const auto* lay:{&small,&large}) {
+        CHECK(lay->compact);CHECK(lay->bar.h==lay->scroll_dn.y+lay->scroll_dn.h);
+        CHECK(lay->battlefield_width(1920,true)==1920);
+        CHECK_FALSE(lay->contains(lay->bar.x+2,lay->bar.h+2)); // No dead black column below.
+        CHECK(lay->contains(lay->cameos[0].rect.x+2,lay->cameos[0].rect.y+2));
+    }
+}

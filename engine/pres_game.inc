@@ -18,6 +18,7 @@ public:
         const auto role_alert=read_settings_doc(settings_file_path()).get("Audio","MinerRoleAlerts");
         miner_role_alerts_=role_alert?ra2engine::ww_parse_bool(*role_alert,true):true;
         g_bld_events.clear();
+        g_deploy_anim_until.clear();
         g_bunker_motion.clear();   // W2-GA-14 per-building anim state is per game
         speech_cooldown_.clear();
         g_projectile_motion.clear();
@@ -660,9 +661,9 @@ private:
                         fx_.spawn(a1, e.x, e.y, level_at(w, e.x, e.y), 0.0);
                         fx_.spawn(a2, e.x, e.y, level_at(w, e.x, e.y), 0.0);
                         snd_.eva("EVA_PsychicDominatorActivated");
-                        snd_.eva("YuriPsychicDominatorActivated");
-                        snd_.play_at("YuriDominatorActivated", e.x, e.y, "yuri_voice");
-                        snd_.play_at("YuriBeOneWithYuri", e.x, e.y, "yuri_voice");
+                        // The global Yuri activation clip ("Be one with Yuri")
+                        // is a soundmd entry selected by AudioVisual rules.
+                        snd_.play(gen_s("PsychicDominatorActivateSound"), 0.0, "psychic dominator activation");
                     } else if (t == T::GeneticConverter) {
                         std::string a = gen_s("GeneticConverterInvokeAnim"); if (a.empty()) a = "GENDEATH";
                         fx_.spawn(a, e.x, e.y, level_at(w, e.x, e.y), 0.0);
@@ -858,7 +859,7 @@ private:
         const int burst = std::max(1, u.w6.burst);
         const int shot = (u.w6.burst_index + burst - 1) % burst;
         if (shot & 1) flh[1] = -flh[1];
-        const bool turret = u.is_vehicle && !u.is_aircraft && u.w7.t.has_turret;
+        const bool turret = u.is_vehicle && (!u.is_aircraft || (u.deploy_fire && u.deployed && u.altitude<=0.0)) && u.w7.t.has_turret;
         double facing = u.is_vehicle ? ra2engine::unit_weapon_facing(u) : 0.0;
         if (!u.is_vehicle) {
             // Infantry block k: screen direction 45k degrees counter-clockwise
@@ -1602,10 +1603,23 @@ private:
             if(e.unit>=0 && e.unit<static_cast<int>(shots.size())) ++shots[e.unit];
         prev_.resize(units.size(), {0.0, -1.0});
         shot_loops_.resize(units.size());
+        deployed_prev_.resize(units.size(),0);
         alive_prev_.resize(units.size(), 1);
         for (std::size_t i = 0; i < units.size(); ++i) {
             const auto& u = units[i];
             const UnitVoices& v = voices_of(u);
+            const bool grounded_deploy=u.alive && u.die_time<0.0 && u.cargo_of<0 &&
+                u.is_aircraft && u.deploy_fire && u.deployed && u.altitude<=0.0;
+            if(grounded_deploy && !deployed_prev_[i] && rules_ini_ &&
+               w.object_visible_at(g_local_house,u.cell_x,u.cell_y)) {
+                if(const auto* anim=fx_.spawn_deploy(pres_clean(rules_ini_->get(pres_type_id(u),"DeployingAnim")),u.fx,u.fy,u.level,u.house)) {
+                    const long duration=anim->length_ticks(anim->delay);
+                    if(duration>0)g_deploy_anim_until[int(i)]=g_pres_tick+duration;
+                    snd_.play_at(anim->report,u.fx,u.fy,"deployment animation");
+                }
+            }
+            if(!grounded_deploy)g_deploy_anim_until.erase(int(i));
+            deployed_prev_[i]=grounded_deploy;
             infantry_death_fx(w, u, prev_[i].second < 0.0, alive_prev_[i] != 0);   // W3-B
             alive_prev_[i] = u.alive ? 1 : 0;
             const unsigned count=shots[i] ? shots[i] : (u.fire_flash > prev_[i].first ? 1u : 0u);
@@ -2106,6 +2120,7 @@ private:
     std::vector<Bld> bhp_;
     std::vector<std::pair<double, double>> prev_;
     std::vector<ra2engine::WeaponSoundLoop> shot_loops_;
+    std::vector<unsigned char> deployed_prev_;
     std::vector<ra2engine::WeaponSoundLoop> building_shot_loops_;
     std::vector<std::string> building_audio_trace_;
     bool low_power_ = false;

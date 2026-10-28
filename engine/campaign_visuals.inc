@@ -50,7 +50,8 @@ private:
                 if (!v.empty() && std::find(out.begin(), out.end(), v) == out.end()) out.push_back(v);
             }
         };
-        dedup(camp::load_ra2_local_ini(ra2_, "rules.ini"), "Animations", camp_anims_);
+        if (camp::yr_map(cfg_.campaign_map)) dedup(campaign_->ra2_rules(), "Animations", camp_anims_);
+        else dedup(camp::load_ra2_local_ini(ra2_, "rules.ini"), "Animations", camp_anims_);
         dedup(campaign_->ra2_rules(), "ParticleSystems", camp_psys_);
     }
     // A waypoint's world point: the cell centre at its ground height.

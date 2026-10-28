@@ -274,3 +274,21 @@ TEST_CASE("settings: bus gain is linear in the stored volume") {
     CHECK(volume_gain_permille(-1.0f) == 0);
     CHECK(volume_gain_permille(2.0f) == 1000);
 }
+
+TEST_CASE("settings: live display overrides persist through enabling and disabling") {
+    auto doc=IniDoc::parse("[Video]\nScreenWidth=1280\nScreenHeight=720\n");
+    auto s=load_settings(doc);
+    CHECK_FALSE(s.display_override); CHECK(s.widescreen);
+    s.display_override=true; s.widescreen=false; store_settings(s,doc);
+    CHECK(load_settings(doc)==s);
+    s.display_override=false; s.widescreen=true; store_settings(s,doc);
+    CHECK(load_settings(doc)==s);
+}
+
+TEST_CASE("settings: sidebar preferences persist and malformed box counts are clamped") {
+    auto d=IniDoc::parse("[Video]\nSidebarScale=75\nSidebarCells=12\n");
+    auto s=load_settings(d);CHECK(s.sidebar_scale==75);CHECK(s.sidebar_cells==12);
+    s.sidebar_scale=60;s.sidebar_cells=0;store_settings(s,d);CHECK(load_settings(d)==s);
+    CHECK(load_settings(IniDoc::parse("[Video]\nSidebarScale=200\nSidebarCells=9\n")).sidebar_cells==8);
+    CHECK(load_settings(IniDoc::parse("[Video]\nSidebarScale=200\nSidebarCells=9\n")).sidebar_scale==125);
+}

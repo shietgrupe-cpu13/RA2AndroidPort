@@ -154,7 +154,8 @@ void fill_unit_combat_extras(const ra2assets::Rules& rules, const std::string& t
     // read into type+0x6A8 by FUN_00711510]: the deployed infantry fires that
     // slot through the normal target path. A RadLevel deploy weapon (DESO
     // RadEruptionWeapon) is the P4 eruption ability instead.
-    const bool deployer = rules.section_flag(type_id, "Deployer", false) &&
+    const bool deployer = (rules.section_flag(type_id, "Deployer", false) ||
+                           rules.section_flag(type_id, "IsSimpleDeployer", false)) &&
                           rules.section_flag(type_id, "DeployFire", false);
     if (deployer) {
         const int slot = tw.deploy_fire_weapon == 0 ? 0 : 1;

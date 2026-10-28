@@ -2,6 +2,10 @@
 // group taps select, group holds assign, battlefield double-tap selects type.
 // Icons are original SDL primitives and never depend on retail icon sheets.
 struct TouchBtn { const char* label; int id; };
+static bool touch_free_layout() {
+    const char* mode=std::getenv("RA2_TOUCH_FREE_LAYOUT");
+    return mode && std::string(mode)=="1";
+}
 ra2engine::TouchTheme touch_skin() const {
     return ra2engine::touch_theme(static_cast<int>(world_.house_side(local_house_)));
 }
@@ -28,7 +32,36 @@ void touch_metal(SDL_Renderer* ren,const SDL_Rect& r,ra2assets::Rgba c) const {
 }
 enum : int { TB_TOGGLE = 1, TB_ADD, TB_FIRE, TB_MOVE, TB_STOP, TB_GUARD, TB_SCATTER, TB_DEPLOY, TB_BRIEF,
              TB_BOX, TB_MORE, TB_TYPE, TB_HOME, TB_EVENT, TB_NEXT, TB_PREV, TB_FOLLOW, TB_ROUTE,
+             TB_PSI = 30, TB_MINER, TB_REVEAL, TB_DOMINATOR, TB_MUTATOR,
              TB_VIEW1 = 90, TB_GROUP1 = 100 };
+static int touch_action_id(const std::string& key) {
+    const char* keys[]={"STOP","GUARD","DEPLOY","SCATTER","FIRE","MOVE","ADD","BOX","ROUTE","HOME",
+        "NEXT","PREV","TYPE","EVENT","FOLLOW","BRIEF","MORE","PSI","MINER","REVEAL","DOMINATOR","MUTATOR"};
+    const int ids[]={TB_STOP,TB_GUARD,TB_DEPLOY,TB_SCATTER,TB_FIRE,TB_MOVE,TB_ADD,TB_BOX,TB_ROUTE,TB_HOME,
+        TB_NEXT,TB_PREV,TB_TYPE,TB_EVENT,TB_FOLLOW,TB_BRIEF,TB_MORE,TB_PSI,TB_MINER,TB_REVEAL,TB_DOMINATOR,TB_MUTATOR};
+    for(int i=0;i<22;++i)if(key==keys[i])return ids[i];
+    if(key.size()==6 && key.rfind("GROUP",0)==0 && key[5]>='0' && key[5]<='9')
+        return TB_GROUP1+(key[5]=='0'?9:key[5]-'1');
+    return -1;
+}
+static const char* touch_action_label(int id) {
+    switch(id) {
+        case TB_ADD:return "+SELECT";case TB_MOVE:return "ATK MOVE";case TB_ROUTE:return "ROUTE Z";
+        case TB_PSI:return "PSI WAVE";case TB_MINER:return "MINER";case TB_REVEAL:return "REVEAL";
+        case TB_DOMINATOR:return "DOMINATE";case TB_MUTATOR:return "MUTATE";
+        case TB_GROUP1:return "1";case TB_GROUP1+1:return "2";case TB_GROUP1+2:return "3";
+        case TB_GROUP1+3:return "4";case TB_GROUP1+4:return "5";case TB_GROUP1+5:return "6";
+        case TB_GROUP1+6:return "7";case TB_GROUP1+7:return "8";case TB_GROUP1+8:return "9";case TB_GROUP1+9:return "0";
+        case TB_STOP:return "STOP";case TB_GUARD:return "GUARD";case TB_DEPLOY:return "DEPLOY";case TB_SCATTER:return "SCATTER";
+        case TB_FIRE:return "FIRE";case TB_BOX:return "BOX";case TB_HOME:return "HOME";case TB_NEXT:return "NEXT";
+        case TB_PREV:return "PREV";case TB_TYPE:return "TYPE";case TB_EVENT:return "EVENT";
+        case TB_FOLLOW:return "FOLLOW";case TB_BRIEF:return "BRIEF";default:return "MORE";
+    }
+}
+static ra2engine::SuperweaponType touch_yuri_power(int id) {
+    using T=ra2engine::SuperweaponType;
+    return id==TB_REVEAL?T::PsychicReveal:id==TB_DOMINATOR?T::PsychicDominator:id==TB_MUTATOR?T::GeneticConverter:T::None;
+}
 // Query live selection without issuing simulation orders.
 const char* touch_deploy_label() const {
     const char* result = nullptr;
@@ -52,6 +85,9 @@ const char* touch_deploy_label() const {
     return result ? result : "DEPLOY";
 }
 bool touch_button_enabled(int id) const {
+    if(id==TB_PSI || id==TB_MINER)return touch_yuri_deploy_available(id==TB_MINER);
+    const auto power=touch_yuri_power(id);
+    if(power!=ra2engine::SuperweaponType::None)return world_.sw_ready(local_house_,power);
     if (id == TB_DEPLOY) {
         for (int i : input_.selection().ids()) {
             if (i < 0 || i >= static_cast<int>(world_.units().size())) continue;
@@ -76,17 +112,19 @@ bool touch_button_enabled(int id) const {
     return true;
 }
 SDL_Rect touch_panel_rect() const {
+    if(touch_free_layout())return SDL_Rect{0,0,0,0};
     if (touch_panel_collapsed_) return touch_panel_toggle_rect();
-    return SDL_Rect{8, touch_bar_top(), std::min(300, playfield_w_-16), kWinH-8-touch_bar_top()};
+    const int m=ra2engine::TouchBarLayout::scaled(8);
+    return touch_dock_offset(SDL_Rect{m,touch_bar_top(),std::min(ra2engine::TouchBarLayout::scaled(300),playfield_w_-2*m),kWinH-m-touch_bar_top()});
 }
 SDL_Rect touch_panel_toggle_rect() const {
     const auto r = ra2engine::TouchBarLayout::toggle(playfield_w_,kWinH,
-        static_cast<int>(touch_buttons().size()),touch_panel_collapsed_);
-    return SDL_Rect{r.x,r.y,r.w,r.h};
+        touch_dock_count(),touch_panel_collapsed_);
+    return touch_dock_offset(SDL_Rect{r.x,r.y,r.w,r.h});
 }
 bool touch_panel_toggle_at(int x,int y) const {
     const auto r = touch_panel_toggle_rect();
-    return touch_bar_visible() && x>=r.x && x<r.x+r.w && y>=r.y && y<r.y+r.h;
+    return !touch_free_layout() && touch_bar_visible() && x>=r.x && x<r.x+r.w && y>=r.y && y<r.y+r.h;
 }
 void draw_touch_panel_toggle(SDL_Renderer* ren) {
     const auto r = touch_panel_toggle_rect();
@@ -101,7 +139,7 @@ void draw_touch_panel_toggle(SDL_Renderer* ren) {
 }
 bool touch_panel_contains(int x, int y) const {
     const auto r = touch_panel_rect();
-    return touch_bar_visible() && x >= r.x && x < r.x+r.w && y >= r.y && y < r.y+r.h;
+    return touch_bar_visible() && ((x >= r.x && x < r.x+r.w && y >= r.y && y < r.y+r.h) || touch_btn_at(x,y)>=0);
 }
 void draw_touch_icon(SDL_Renderer* ren, int id, const SDL_Rect& r, bool enabled) {
     touch_colour(ren,enabled ? touch_skin().accent : ra2assets::Rgba{112,112,119,255});
@@ -173,7 +211,7 @@ void draw_touch_selection(SDL_Renderer* ren, ra2engine::TextureCache& tc) {
 }
 int touch_bar_top() const {
     if (touch_panel_collapsed_) return touch_panel_toggle_rect().y;
-    return ra2engine::TouchBarLayout::top(kWinH, touch_btn_count());
+    return ra2engine::TouchBarLayout::top(kWinH, touch_dock_count());
 }
 const std::vector<TouchBtn>& touch_buttons() const {
     static const std::vector<TouchBtn> all = [] {
@@ -187,22 +225,15 @@ const std::vector<TouchBtn>& touch_buttons() const {
                     if (end == std::string::npos) end = s.size();
                     std::string token = s.substr(start, end - start);
                     start = end + 1;
-                    if (token == "STOP") custom.push_back({"STOP", TB_STOP});
-                    else if (token == "GUARD") custom.push_back({"GUARD", TB_GUARD});
-                    else if (token == "DEPLOY") custom.push_back({"DEPLOY", TB_DEPLOY});
-                    else if (token == "SCATTER") custom.push_back({"SCATTER", TB_SCATTER});
-                    else if (token == "FIRE") custom.push_back({"FIRE", TB_FIRE});
-                    else if (token == "MOVE") custom.push_back({"ATK MOVE", TB_MOVE});
-                    else if (token == "ADD") custom.push_back({"+SELECT", TB_ADD});
-                    else if (token == "BOX") custom.push_back({"BOX", TB_BOX});
-                    else if (token == "ROUTE") custom.push_back({"ROUTE Z", TB_ROUTE});
-                    else if (token == "HOME") custom.push_back({"HOME", TB_HOME});
-                    else if (token == "NEXT") custom.push_back({"NEXT", TB_NEXT});
-                    else if (token == "PREV") custom.push_back({"PREV", TB_PREV});
+                    const int id=touch_action_id(token);
+                    if(id>=0 && std::none_of(custom.begin(),custom.end(),[&](const TouchBtn& b){return b.id==id;}))
+                        custom.push_back({touch_action_label(id),id});
                 }
+                const char* version=std::getenv("RA2_TOUCH_MAPPING_VERSION");
+                if(version && std::string(version)=="2")return custom; // NONE intentionally hides every action.
                 if (!custom.empty()) {
                     custom.push_back({"MORE", TB_MORE});
-                    for (int i = 0; i < 5; ++i) custom.push_back({i==0?"1":i==1?"2":i==2?"3":i==3?"4":"5", TB_GROUP1 + i});
+                    for(int i=0;i<5;++i)custom.push_back({touch_action_label(TB_GROUP1+i),TB_GROUP1+i});
                     return custom;
                 }
             }
@@ -227,7 +258,7 @@ const std::vector<TouchBtn>& touch_buttons() const {
     if (touch_page2_) return more;
     return all;
 }
-struct CustomTouchPos { int id; float x_pct; float y_pct; };
+struct CustomTouchPos { int id; float x_pct; float y_pct; float size=100; };
 static const std::vector<CustomTouchPos>& touch_custom_positions() {
     static const std::vector<CustomTouchPos> pos = [] {
         std::vector<CustomTouchPos> out;
@@ -245,18 +276,12 @@ static const std::vector<CustomTouchPos>& touch_custom_positions() {
                     std::string key = token.substr(0, colon);
                     float x = static_cast<float>(std::atof(token.substr(colon + 1, comma - colon - 1).c_str()));
                     float y = static_cast<float>(std::atof(token.substr(comma + 1).c_str()));
-                    int id = -1;
-                    if (key == "STOP") id = TB_STOP;
-                    else if (key == "GUARD") id = TB_GUARD;
-                    else if (key == "DEPLOY") id = TB_DEPLOY;
-                    else if (key == "SCATTER") id = TB_SCATTER;
-                    else if (key == "FIRE") id = TB_FIRE;
-                    else if (key == "MOVE") id = TB_MOVE;
-                    else if (key == "ADD") id = TB_ADD;
-                    else if (key == "BOX") id = TB_BOX;
-                    else if (key == "ROUTE") id = TB_ROUTE;
-                    else if (key == "HOME") id = TB_HOME;
-                    if (id >= 0) out.push_back({id, x, y});
+                    const auto size_at=token.find(',',comma+1);
+                    float size=size_at==std::string::npos ? 100.0f : std::atof(token.substr(size_at+1).c_str());
+                    if(!std::isfinite(size))size=100;
+                    const int id=touch_action_id(key);
+                    if(id>=0 && std::isfinite(x) && std::isfinite(y))
+                        out.push_back({id,std::clamp(x,0.0f,100.0f),std::clamp(y,0.0f,100.0f),std::clamp(size,40.0f,180.0f)});
                 }
             }
         }
@@ -265,6 +290,23 @@ static const std::vector<CustomTouchPos>& touch_custom_positions() {
     return pos;
 }
 
+bool touch_is_floating(int id) const {
+    if(touch_free_layout())return true;
+    for(const auto& p:touch_custom_positions())if(p.id==id)return true;return false;
+}
+int touch_dock_count() const {
+    int n=0;for(const auto& b:touch_buttons())if(!touch_is_floating(b.id))++n;return n;
+}
+SDL_Rect touch_dock_offset(SDL_Rect r) const {
+    const auto* dock=std::getenv("RA2_TOUCH_DOCK");
+    if(dock && std::string(dock)=="bottom_right") {
+        const int m=ra2engine::TouchBarLayout::scaled(8),pw=std::min(ra2engine::TouchBarLayout::scaled(300),playfield_w_-2*m);
+        r.x+=std::max(0,playfield_w_-2*m-pw);
+    }
+    if(dock && std::string(dock)=="left_side" && !touch_panel_collapsed_)
+        r.y-=std::max(0,ra2engine::TouchBarLayout::top(kWinH,touch_dock_count())/2);
+    return r;
+}
 bool touch_bar_visible() const {
     return touch_ui_ && !menu_.open_ && !sld_.is_open() && !gf_abort_.open() && !input_locked_ && !net_chat_open_;
 }
@@ -275,6 +317,10 @@ SDL_Rect touch_btn_rect(int i) const {
         int id = btns[i].id;
         for (const auto& cp : touch_custom_positions()) {
             if (cp.id == id) {
+                if(touch_free_layout()) {
+                    const auto r=ra2engine::TouchBarLayout::floating(kWinW,kWinH,cp.x_pct,cp.y_pct,cp.size);
+                    return SDL_Rect{r.x,r.y,r.w,r.h};
+                }
                 const auto base = ra2engine::TouchBarLayout::button(playfield_w_, kWinH, touch_btn_count(), i);
                 int total_w = kWinW;
                 int x = std::clamp(static_cast<int>(cp.x_pct * static_cast<float>(total_w - base.w) / 100.0f), 0, std::max(0, total_w - base.w));
@@ -283,16 +329,22 @@ SDL_Rect touch_btn_rect(int i) const {
             }
         }
     }
-    const auto r = ra2engine::TouchBarLayout::button(playfield_w_, kWinH, touch_btn_count(), i);
-    return SDL_Rect{r.x, r.y, r.w, r.h};
+    if(touch_free_layout()) {
+        // Extra MORE-page commands also remain independent floating buttons.
+        const auto r=ra2engine::TouchBarLayout::floating(kWinW,kWinH,10.0f+(i%6)*16.0f,20.0f+(i/6)*24.0f);
+        return SDL_Rect{r.x,r.y,r.w,r.h};
+    }
+    int dock_index=0;for(int j=0;j<i;++j)if(!touch_is_floating(btns[j].id))++dock_index;
+    const auto r = ra2engine::TouchBarLayout::button(playfield_w_, kWinH, touch_dock_count(), dock_index);
+    return touch_dock_offset(SDL_Rect{r.x, r.y, r.w, r.h});
 }
 int touch_btn_count() const {
-    return touch_panel_collapsed_ ? 0 : static_cast<int>(touch_buttons().size());
+    return touch_panel_collapsed_ && !touch_free_layout() ? 0 : static_cast<int>(touch_buttons().size());
 }
 int touch_btn_at(int x, int y) const {
     if (!touch_bar_visible()) return -1;
     const int n = touch_btn_count();
-    for (int i = 0; i < n; ++i) {
+    for (int i = n-1; i >= 0; --i) {
         const SDL_Rect r = touch_btn_rect(i);
         if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h && r.y + r.h <= kWinH) return i;
     }
@@ -328,6 +380,11 @@ void touch_command(int id, bool long_press, uint32_t t_ms) {
         case TB_GUARD: input_.guard_selected(); break;
         case TB_SCATTER: input_.scatter_selected(); break;
         case TB_DEPLOY: deploy_selected(); break;
+        case TB_PSI: touch_yuri_deploy(false); break;
+        case TB_MINER: touch_yuri_deploy(true); break;
+        case TB_REVEAL:case TB_DOMINATOR:case TB_MUTATOR:
+            if(world_.sw_ready(local_house_,touch_yuri_power(id)))w2_arm_sw(touch_yuri_power(id));
+            break;
         case TB_BRIEF: show_briefing_ = !show_briefing_; break;
         default:
             if (id >= TB_VIEW1 && id < TB_VIEW1 + 3) {   // W6-01-09: View / SetView 1-3
@@ -453,15 +510,17 @@ void touch_bar_tick(double dt) {
 }
 void draw_touch_bar(SDL_Renderer* ren, ra2engine::TextureCache& tc) {
     if (!touch_bar_visible()) return;
-    if (touch_panel_collapsed_) { draw_touch_panel_toggle(ren); return; }
-    draw_touch_selection(ren, tc);
-    draw_touch_panel_toggle(ren);
+    if(!touch_free_layout()) {
+        if (touch_panel_collapsed_) { draw_touch_panel_toggle(ren); return; }
+        draw_touch_selection(ren, tc);
+        draw_touch_panel_toggle(ren);
+    }
     const auto& bs = touch_buttons();
     const int n = touch_btn_count();
     SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
     for (int i = 0; i < n; ++i) {
         const SDL_Rect r = touch_btn_rect(i);
-        if (r.y + r.h > kWinH) break;
+        if (r.y + r.h > kWinH || r.y<0) continue;
         const int id = bs[static_cast<size_t>(i)].id;
         const bool armed_mod = touch_add_ || touch_fire_ || touch_move_ || touch_box_;
         const bool on = (id == TB_ADD && touch_add_) || (id == TB_FIRE && touch_fire_) ||
@@ -480,12 +539,18 @@ void draw_touch_bar(SDL_Renderer* ren, ra2engine::TextureCache& tc) {
         std::string label = id == TB_DEPLOY ? touch_deploy_label() : bs[static_cast<size_t>(i)].label;
         if (id == TB_TOGGLE && !touch_bar_open_ && armed_mod)   // closed: show what is armed
             label = touch_add_ ? "+SEL" : touch_fire_ ? "FIRE" : touch_move_ ? "ATK MOVE" : "BOX";
-        const bool has_icon = id < TB_VIEW1 && id != TB_BRIEF;
+        const bool has_icon = !touch_free_layout() && id < TB_PSI && id != TB_BRIEF;
         if (has_icon) draw_touch_icon(ren, id, r, enabled);
         const int scale = label.size() <= 2 ? 2 : 1;
         const int lw = static_cast<int>(label.size()) * 6 * scale - scale;
         const int ly = has_icon ? r.y + r.h - 14 : r.y + (r.h - 7*scale)/2;
-        draw_text(ren, label, r.x + (r.w-lw)/2, ly, scale,
+        if(touch_free_layout()) {
+            const float font=std::min(r.h/14.0f,r.w/float(label.size()*6+8));
+            float sx=1,sy=1;SDL_RenderGetScale(ren,&sx,&sy);SDL_RenderSetScale(ren,sx*font,sy*font);
+            draw_text(ren,label,int((r.x+r.w/2)/font)-int(label.size()*6-1)/2,int((r.y+r.h/2)/font)-3,1,
+                enabled?235:115,enabled?225:120,enabled?200:115);
+            SDL_RenderSetScale(ren,sx,sy);
+        } else draw_text(ren, label, r.x + (r.w-lw)/2, ly, scale,
                   enabled ? 235 : 115, enabled ? 225 : 120, enabled ? 200 : 115);
     }
 }

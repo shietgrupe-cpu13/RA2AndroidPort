@@ -20,14 +20,16 @@
 struct CampaignPageState {
     struct Entry { const char* battle; const char* side; const char* desc; const char* fallback; int well; };
     static const Entry& entry(int i) {
-        static const Entry k[3] = {
+        static const Entry k[5] = {
             {"TUT1", "GDI", "DESC:TUT1", "Boot Camp", 1},
             {"ALL1", "GDI", "DESC:ALL1", "Allied Campaign", 0},
             {"SOV1", "Nod", "DESC:SOV1", "Soviet Campaign", 2},
+            {"YR_ALL1", "GDI", "", "Yuri's Revenge: Allied", 0},
+            {"YR_SOV1", "Nod", "", "Yuri's Revenge: Soviet", 2},
         };
         return k[i];
     }
-    static constexpr int kEntries = 3;
+    static constexpr int kEntries = 5;
     static ra2engine::SbRect well(int w) {
         static const ra2engine::SbRect k[3] = {{24, 16, 426, 115}, {61, 138, 348, 91}, {78, 235, 318, 115}};
         return k[w];
@@ -90,7 +92,7 @@ struct CampaignPageState {
         if (hit >= 0) { list.sel = hit; consumed = true; return false; }
         for (int w = 0; w < 3; ++w) {
             if (!well(w).contains(lx, ly)) continue;
-            const int e = entry_of_well(w);
+            const int e = list.sel >= 3 && entry(list.sel).well == w ? list.sel : entry_of_well(w);
             const bool dbl = (w == last_click_well && ev.t_ms - last_click_ms < 400);
             last_click_well = w;
             last_click_ms = ev.t_ms;

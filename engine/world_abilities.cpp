@@ -67,7 +67,26 @@ bool World::order_deploy(int idx) {
     // only movement is refused (order_unit_move). Independent of the P4
     // abilities firewall.
     if (u.deploy_fire && u.alive && u.die_time < 0.0 && u.cargo_of < 0) {
+        if(u.is_aircraft && !u.deployed) {
+            const int occupant=unit_at_cell(u.cell_x,u.cell_y);
+            if(!walkable(u.cell_x,u.cell_y) || an_victim_naval_cell(u.cell_x,u.cell_y) ||
+               building_at_cell(u.cell_x,u.cell_y)>=0 || (occupant>=0 && occupant!=idx) ||
+               !occ_.can_enter(u.cell_x,u.cell_y,idx)) return false;
+        }
         u.deployed = !u.deployed;
+        if(u.is_aircraft) {
+            aircraft_any_=true;
+            u.an.jj_speed=0.0;
+            u.has_flight_goal=false;
+            u.an.landing=u.deployed;
+            if(u.deployed) {
+                u.flight_state=u.altitude>0.0 ? FlightState::Descending : FlightState::Grounded;
+                occ_.set(u.cell_x,u.cell_y,idx); // Reserve the landing spot.
+            } else {
+                occ_.release_all_of(idx,-1,-1);
+                u.flight_state=FlightState::TakingOff;
+            }
+        }
         if (u.deployed) {
             if (u.moving()) {
                 occ_.release_all_of(idx, u.cell_x, u.cell_y);

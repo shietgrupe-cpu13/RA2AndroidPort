@@ -119,12 +119,13 @@ inline int pip_frame_unit(double ratio, double yellow, double red) {
 // (loader 0x713513) to every y of the board and the pips].
 int pres_bracket_delta(const ra2engine::Unit& u);
 void draw_unit_pips(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2engine::Unit& u, int x, int y,
-                    double yellow, double red, bool board) {
+                    double yellow, double red, bool board, bool health) {
     if (!g_pips || u.max_hp <= 0) return;
     const bool inf = pres_rtti_infantry(u);
     y += pres_bracket_delta(u);
     if (board && inf) blit_shp_centered(ren, tc, "pip:brd1", g_pips->pipbrd, 1, g_pips->pal, x + 11, y - 25);
     else if (board) blit_shp_centered(ren, tc, "pip:brd0", g_pips->pipbrd, 0, g_pips->pal, x + 1, y - 26);
+    if(!health)return; // Keep the native selection board when health pips are disabled.
     const int max = inf ? 8 : 17;
     const double ratio = static_cast<double>(std::max(0, u.hp)) / u.max_hp;
     int n = static_cast<int>(ratio * max);

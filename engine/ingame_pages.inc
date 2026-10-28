@@ -484,6 +484,15 @@ public:
                 }
             }
         }
+        if(page_==P_CONTROLS && ra2engine::SbRect{48,366,370,26}.contains(lx,ly)) {
+            const int sizes[]={60,75,90,100,125};
+            int next=60;for(int s:sizes)if(s>set_.sidebar_scale){next=s;break;}
+            set_.sidebar_scale=next;publish();if(g_user_settings)save_user_settings(*g_user_settings);return Settings;
+        }
+        if(page_==P_CONTROLS && ra2engine::SbRect{48,402,370,26}.contains(lx,ly)) {
+            set_.sidebar_cells=set_.sidebar_cells==0 ? 6 : set_.sidebar_cells>=60 ? 0 : set_.sidebar_cells+2;
+            publish();if(g_user_settings)save_user_settings(*g_user_settings);return Settings;
+        }
         // Page controls.
         for (int i = 0; i < kSliders; ++i) {
             if (!slider_on_page(i)) continue;
@@ -501,6 +510,7 @@ public:
             bool& v = check_ref(i);
             v = !v;
             publish();
+            if (i >= C_OVERRIDE && g_user_settings) save_user_settings(*g_user_settings);
             return Settings;
         }
         if (page_ == P_SOUND) {
@@ -527,13 +537,30 @@ public:
         for (int i = 0; i < static_cast<int>(btns.size()); ++i)
             if (btns[(size_t)i].enabled && btns[(size_t)i].rect.contains(lx, ly)) hover = i;
         // ShellButton rects are LOGICAL here; draw_shell maps them.
-        draw_shell(ren, tc, art, xf, btns, hover, (down_ && hover >= 0) ? hover : -1, header(), "", -1);
+        if (page_ == P_CONTROLS) {
+            // Keep the resized battlefield visible while display controls change.
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(ren, 0, 0, 0, 190);
+            const SDL_Rect panel=p.dev(0,0,472,448);
+            SDL_RenderFillRect(ren,&panel);
+            p.header(header(),20,20,420,24);
+            p.label("Live battlefield preview",48,70,370,20,0);
+            p.label(std::to_string(g_ui_w)+" x "+std::to_string(g_ui_h),48,96,370,20,0);
+            for (std::size_t i=0;i<btns.size();++i)
+                shell_small_button(p,btns[i].rect,btns[i].label,int(i)==hover,
+                    down_ && int(i)==hover,btns[i].enabled);
+        } else {
+            draw_shell(ren, tc, art, xf, btns, hover, (down_ && hover >= 0) ? hover : -1, header(), "", -1);
+        }
         std::string status = hover >= 0 ? stt_for(btns[(size_t)hover].action) : std::string();
         if (page_ == P_CONTROLS) {
+            shell_small_button(p,{48,366,370,26},"Sidebar size: "+std::to_string(set_.sidebar_scale)+"% (tap)",ra2engine::SbRect{48,366,370,26}.contains(lx,ly),down_);
+            shell_small_button(p,{48,402,370,26},"Cameo boxes: "+(set_.sidebar_cells==0 ? std::string("Auto") : std::to_string(set_.sidebar_cells))+" (tap)",ra2engine::SbRect{48,402,370,26}.contains(lx,ly),down_);
             p.label(gf_csf("GUI:GameSpeed", "Game Speed"), 6, 139, 117, 24, 2);
             p.label(gf_csf("GUI:Faster", "Faster"), 331, 139, 100, 24, 0);
             p.label(gf_csf("GUI:ScrollRate", "Scroll Rate"), 6, 189, 117, 24, 2);
             p.label(gf_csf("GUI:Faster", "Faster"), 331, 189, 100, 24, 0);
+            p.label("HUD text size", 6, 219, 117, 24, 2);
         } else if (page_ == P_SOUND) {
             static const char* kL[3] = {"GUI:MusicVolume", "GUI:SoundVolume", "GUI:VoiceVolume"};
             static const char* kF[3] = {"Music Volume", "Sound Volume", "Voice Volume"};
@@ -575,7 +602,8 @@ public:
         for (int i = 0; i < kSliders; ++i) {
             if (!slider_on_page(i)) continue;
             const SliderDef d = slider(i);
-            p.trackbar(d.r, slider_pos(i), d.range, d.readout, std::to_string(slider_pos(i)), true);
+            const std::string value = i == S_HUD_TEXT ? std::to_string(100 + 10 * slider_pos(i)) : std::to_string(slider_pos(i));
+            p.trackbar(d.r, slider_pos(i), d.range, d.readout, value, true);
             if (d.r.contains(lx, ly)) status = gf_csf(slider_stt(i), "");
         }
         for (int i = 0; i < kChecks; ++i) {
@@ -633,7 +661,7 @@ public:
         p.set("menu_music", ra2engine::volume_to_slider(set_.score_volume));
         p.set("menu_tracks", static_cast<int>(tracks_.items.size()));
         p.set("menu_track_sel", tracks_.sel);
-        static const char* kSl[kSliders] = {"speed", "scroll", "music", "sound", "voice"};
+        static const char* kSl[kSliders] = {"speed", "scroll", "music", "sound", "voice", "hudtext"};
         for (int i = 0; i < kSliders; ++i) {
             if (!slider_on_page(i)) continue;
             const SliderDef d = slider(i);
@@ -642,7 +670,7 @@ public:
                 put(std::string("menu:slider:") + kSl[i] + "=" + std::to_string(v),
                     {d.r.x + shell_trackbar_x_for(v, d.range, d.r.w, ro), d.r.y + d.r.h / 2, 1, 1});
         }
-        static const char* kCk[kChecks] = {"targetlines", "tooltips", "hidden", "shuffle"};
+        static const char* kCk[kChecks] = {"targetlines", "tooltips", "hidden", "shuffle", "displayoverride", "widescreen"};
         for (int i = 0; i < kChecks; ++i)
             if (check_on_page(i)) put(std::string("menu:check:") + kCk[i], check_rect(i));
         if (page_ == P_SOUND) {
@@ -671,8 +699,8 @@ private:
                A_BACK, A_ABORT, A_RESTART, A_LEAVE, A_OBSERVE, A_REPORT };
     bool mp_net_ = false, mp_can_observe_ = false;   // W9-05-06
     int dip_pick_ = -1;                              // W9-05-03/07: the row's house
-    enum { S_SPEED = 0, S_SCROLL, S_MUSIC, S_SOUND, S_VOICE, kSliders };
-    enum { C_TARGET = 0, C_TOOLTIPS, C_HIDDEN, C_SHUFFLE, kChecks };
+    enum { S_SPEED = 0, S_SCROLL, S_MUSIC, S_SOUND, S_VOICE, S_HUD_TEXT, kSliders };
+    enum { C_TARGET = 0, C_TOOLTIPS, C_HIDDEN, C_SHUFFLE, C_OVERRIDE, C_WIDESCREEN, kChecks };
     struct SliderDef { ra2engine::SbRect r; int range; bool readout; };
     static constexpr ra2engine::SbRect kPlay{43, 347, 124, 24};
     static constexpr ra2engine::SbRect kStop{295, 347, 124, 24};
@@ -778,23 +806,26 @@ private:
         switch (i) {
             case S_SPEED: return {{130, 141, 192, 21}, 6, false};
             case S_SCROLL: return {{130, 191, 192, 21}, 6, false};
+            case S_HUD_TEXT: return {{130, 220, 262, 21}, 6, true};
             case S_MUSIC: return {{157, 45, 262, 21}, 10, true};
             case S_SOUND: return {{157, 81, 262, 21}, 10, true};
             default: return {{157, 117, 262, 21}, 10, true};
         }
     }
     bool slider_on_page(int i) const {
-        return (page_ == P_CONTROLS && i <= S_SCROLL) || (page_ == P_SOUND && i >= S_MUSIC);
+        return (page_ == P_CONTROLS && (i <= S_SCROLL || i == S_HUD_TEXT)) ||
+               (page_ == P_SOUND && i >= S_MUSIC && i < S_HUD_TEXT);
     }
     static const char* slider_stt(int i) {
         static const char* k[kSliders] = {"STT:GameOptSliderSpeed", "STT:GameOptSliderScroll", "STT:SoundOptSliderMusic",
-                                          "STT:SoundOptSliderSound", "STT:SoundOptSliderVoice"};
+                                          "STT:SoundOptSliderSound", "STT:SoundOptSliderVoice", ""};
         return k[i];
     }
     int slider_pos(int i) const {
         switch (i) {
             case S_SPEED: return 6 - std::max(0, std::min(6, set_.game_speed));   // GameSpeed = 6 - pos (RE #4)
             case S_SCROLL: return std::max(0, std::min(6, ra2engine::scroll_rate_to_slider(set_.scroll_rate)));
+            case S_HUD_TEXT: return (std::clamp(set_.hud_text_size, 100, 160) - 100) / 10;
             case S_MUSIC: return ra2engine::volume_to_slider(set_.score_volume);
             case S_SOUND: return ra2engine::volume_to_slider(set_.sound_volume);
             default: return ra2engine::volume_to_slider(set_.voice_volume);
@@ -807,18 +838,21 @@ private:
         switch (i) {
             case S_SPEED: set_.game_speed = 6 - pos; break;
             case S_SCROLL: set_.scroll_rate = ra2engine::slider_to_scroll_rate(pos); break;
+            case S_HUD_TEXT: set_.hud_text_size = 100 + pos * 10; break;
             case S_MUSIC: set_.score_volume = ra2engine::slider_to_volume(pos); break;
             case S_SOUND: set_.sound_volume = ra2engine::slider_to_volume(pos); break;
             default: set_.voice_volume = ra2engine::slider_to_volume(pos); break;
         }
         publish();
     }
-    bool check_on_page(int i) const { return (page_ == P_CONTROLS && i <= C_HIDDEN) || (page_ == P_SOUND && i == C_SHUFFLE); }
+    bool check_on_page(int i) const { return (page_ == P_CONTROLS && (i <= C_HIDDEN || i >= C_OVERRIDE)) || (page_ == P_SOUND && i == C_SHUFFLE); }
     static ra2engine::SbRect check_rect(int i) {
         switch (i) {
             case C_TARGET: return {48, 313, 170, 18};
             case C_TOOLTIPS: return {235, 313, 170, 18};
             case C_HIDDEN: return {48, 342, 220, 18};
+            case C_OVERRIDE: return {48, 251, 370, 22};
+            case C_WIDESCREEN: return {48, 280, 370, 22};
             default: return {43, 251, 105, 22};
         }
     }
@@ -827,12 +861,14 @@ private:
             case C_TARGET: return gf_csf("GUI:TargetLines", "Target Lines");
             case C_TOOLTIPS: return gf_csf("GUI:Tooltips", "Tooltips");
             case C_HIDDEN: return gf_csf("GUI:ShowHidden", "See Hidden Objects");
+            case C_OVERRIDE: return "Override display settings (live)";
+            case C_WIDESCREEN: return "Widescreen: use full display";
             default: return gf_csf("GUI:Shuffle", "Shuffle");
         }
     }
     static const char* check_stt(int i) {
         static const char* k[kChecks] = {"STT:GameOptCBoxTargetLines", "STT:GameOptCBoxTooltips",
-                                         "STT:GameOptCBoxHidden", "STT:SoundOptCBoxShuffle"};
+                                         "STT:GameOptCBoxHidden", "STT:SoundOptCBoxShuffle", "", ""};
         return k[i];
     }
     bool check_val(int i) const {
@@ -840,6 +876,8 @@ private:
             case C_TARGET: return set_.unit_action_lines;
             case C_TOOLTIPS: return set_.tooltips;
             case C_HIDDEN: return set_.show_hidden;
+            case C_OVERRIDE: return set_.display_override;
+            case C_WIDESCREEN: return set_.widescreen;
             default: return set_.is_score_shuffle;
         }
     }
@@ -848,6 +886,8 @@ private:
             case C_TARGET: return set_.unit_action_lines;
             case C_TOOLTIPS: return set_.tooltips;
             case C_HIDDEN: return set_.show_hidden;
+            case C_OVERRIDE: return set_.display_override;
+            case C_WIDESCREEN: return set_.widescreen;
             default: return set_.is_score_shuffle;
         }
     }

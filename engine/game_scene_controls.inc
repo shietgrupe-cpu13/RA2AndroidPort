@@ -78,6 +78,25 @@
         SDL_RenderSetClipRect(ren,nullptr);
     }
     void draw_selected_building(SDL_Renderer* ren) const {
+        if(g_pips && pip_tc_) {
+            const auto& buildings=world_.buildings();
+            for(int i=0;i<int(buildings.size());++i) {
+                const auto& b=buildings[i];
+                if(!b.alive || b.hp<=0 || b.state!=ra2engine::Building::State::Idle ||
+                   b.type<0 || b.type>=int(ba_.roster.size()) || b.type>=int(ba_.art.size()) || ba_.art[b.type].invisible)continue;
+                if(b.house!=local_house_ && !world_.object_visible_at(local_house_,b.cx,b.cy))continue;
+                if(!ra2engine::health_bar_visible(client_bldg_hp_mode(),input_.selected_building()==i,
+                    b.hp<b.max_hp,false,b.being_repaired))continue;
+                const auto& def=ba_.roster[b.type];
+                const auto height=pres_clean(art_ini_.get(def.image.empty()?def.id:def.image,"Height"));
+                const int level=world_.cell_level(b.cx,b.cy);
+                const int x=(b.cx-b.cy)*30+30+cam_.x;
+                const int y=(b.cx+b.cy)*15-level*15+cam_.y;
+                draw_building_pips(ren,*pip_tc_,b.hp,b.max_hp,x,y,b.fh,
+                    (height.empty()?2:std::atoi(height.c_str()))*15,g_pip_yellow,g_pip_red);
+            }
+            return;
+        }
         const int sb = input_.selected_building();
         if (sb < 0 || sb >= static_cast<int>(world_.buildings().size())) return;
         const ra2engine::Building& b = world_.buildings()[sb];
@@ -114,6 +133,7 @@
         SDL_RenderDrawLine(ren, bx, by, bx + k, by - k / 2);
         SDL_RenderDrawLine(ren, lx, ly - k / 2, lx, ly + k / 2);
         SDL_RenderDrawLine(ren, rx, ry - k / 2, rx, ry + k / 2);
+        if(!ra2engine::health_bar_visible(client_bldg_hp_mode(),true,b.hp<b.max_hp,false,b.being_repaired))return;
         const double frac = b.max_hp > 0 ? static_cast<double>(b.hp) / b.max_hp : 0.0;
         const double red = rules_.general_double("ConditionRed", 25.0) / 100.0;
         const int w = std::max(24, (rx - lx) / 2);
@@ -176,6 +196,26 @@
 
     // DeployObject (D): unload selected transports + toggle deployers (the
     // former raw-scancode path, now a real key event).
+    bool touch_yuri_unit(const ra2engine::Unit& u,bool miner) const {
+        if(!u.alive || u.die_time>=0 || u.cargo_of>=0 || !world_.controllable(u.house))return false;
+        if(miner)return u.deploys_into>=0 && u.deploys_into<int(ba_.roster.size()) && ba_.roster[u.deploys_into].slave_count>0;
+        return u.w7.t.mind_control && (u.deploy_fire || (u.abil.deployer && u.abil.deploy.valid));
+    }
+    bool touch_yuri_deploy_available(bool miner) const {
+        for(int i:input_.selection().ids())if(i>=0 && i<int(world_.units().size()) && touch_yuri_unit(world_.units()[i],miner))return true;
+        const int b=input_.selected_building();
+        return miner && b>=0 && b<int(world_.buildings().size()) && world_.buildings()[b].house==local_house_ && world_.can_pack_slave_miner(b);
+    }
+    void touch_yuri_deploy(bool miner) {
+        ra2engine::Command c;c.type=ra2engine::EventType::Deploy;int first=-1;
+        for(int i:input_.selection().ids())if(i>=0 && i<int(world_.units().size()) && touch_yuri_unit(world_.units()[i],miner)) {
+            c.whom.push_back(ra2engine::Target::unit(world_,i));if(first<0)first=i;
+        }
+        const int b=input_.selected_building();
+        if(miner && b>=0 && b<int(world_.buildings().size()) && world_.buildings()[b].house==local_house_ && world_.can_pack_slave_miner(b))
+            c.whom.push_back(ra2engine::Target::building(b));
+        if(!c.whom.empty()){issue(std::move(c));pres_.note_deploy_order(world_,first);}
+    }
     void deploy_selected() {
         // G16 (agent G) [RE: world-depth.md §A5]: Deploy on a selected own
         // garrison = Mission_Unload -> UnloadOccupants (FUN_0044D880).
@@ -536,7 +576,10 @@
     // over a 0xAF black box (hud_text.inc draw_cameo_text).
     void draw_queue_badges(SDL_Renderer* ren, ra2engine::TextureCache& tc) const {
         if (!(ba_.ok && ba_.sidebar_ok)) return;
-        for (const ra2engine::CameoCell& cell : lay_.cameos) {
+        float sx=1,sy=1;SDL_RenderGetScale(ren,&sx,&sy);
+        SDL_RenderSetScale(ren,sx*lay_.scale,sy*lay_.scale);
+        const auto native=lay_.unscaled();
+        for (const ra2engine::CameoCell& cell : native.cameos) {
             if (ra2engine::power_cameo_type(cell.type)!=ra2engine::SuperweaponType::None) continue;
             ra2engine::QueueCat cat;
             if (active_tab_ >= 2) cat = rp_cat_of_unit(cell.type);
@@ -549,6 +592,7 @@
             else if (current && world_.econ_held(local_house_, cat)) status = g_txt_hold;
             if (shown || !status.empty()) draw_cameo_text(ren, tc, cell.rect.x, cell.rect.y, status, shown);
         }
+        SDL_RenderSetScale(ren,sx,sy);
     }
 
     // --- G-09: radar click [RE: RadarClass action; TS lineage RadarClass::Action:
@@ -569,7 +613,7 @@
     }
     bool radar_cell_at(int px, int py, int& cx, int& cy) const {
         // G-09 (E): the live isometric radar owns the pixel<->cell mapping.
-        if (g_radar && g_radar->ok()) return g_radar->cell_at(px, py, cx, cy);
+        if (g_radar && g_radar->ok()) return g_radar->cell_at(int(px/lay_.scale), int(py/lay_.scale), cx, cy);
         const ra2engine::SbRect& r = lay_.radar;
         if (!r.contains(px, py) || world_.grid_w() <= 0 || world_.grid_h() <= 0) return false;
         const double sx = static_cast<double>(r.w) / world_.grid_w();

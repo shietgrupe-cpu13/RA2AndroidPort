@@ -32,6 +32,16 @@ void game_logical_size(int& out_w, int& out_h) {
         out_h = g_play_canvas_h;
         return;
     }
+    if (g_user_settings && g_user_settings->display_override) {
+        if (!g_user_settings->widescreen) {
+            if (!user_canvas_size(out_w,out_h)) { out_w=1280; out_h=720; }
+            return;
+        }
+        if (g_platform) {
+            int w=0,h=0; g_platform->output_size(w,h);
+            if (w>0 && h>0) { out_w=w; out_h=h; return; }
+        }
+    }
     if (user_canvas_size(out_w,out_h)) return;
     if (!g_platform) return;
     int w = 0, h = 0;

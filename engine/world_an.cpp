@@ -1737,7 +1737,7 @@ void World::step_air_naval(double dt) {
         // W7-05-13 [RE: FootClass Mission_Attack FUN_004D4CE0 / Guard
         // FUN_004D4F90: a HoverAttack (+0x390) unit at height 0 with a target
         // gets SetDestination(its own cell) -- it lifts off and fights hovering].
-        if (u.an.t.hover_attack && u.is_aircraft && !u.an.t.fixed_wing && live(u) &&
+        if (!u.deployed && u.an.t.hover_attack && u.is_aircraft && !u.an.t.fixed_wing && live(u) &&
             u.flight_state == FlightState::Grounded && (u.target >= 0 || u.target_building >= 0)) {
             occ_.release_all_of(i, -1, -1);
             u.flight_state = FlightState::TakingOff;

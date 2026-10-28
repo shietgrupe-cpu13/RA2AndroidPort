@@ -544,7 +544,9 @@ public:
         const auto& us = w.units();
         for (std::size_t i = 0; i < us.size(); ++i) {
             const ra2engine::Unit& u = us[i];
-            if (!u.alive || u.die_time >= 0.0 || u.cargo_of >= 0) continue;
+            const bool active=u.alive && u.die_time<0.0 && u.cargo_of<0;
+            const bool launch_edge=rocket_launches_.observe(i,active,u.an.rocket.phase>=ra2engine::kRocketClimb);
+            if(!active)continue;
             // Ship wake: every 8 frames while moving on water.
             // W7-06-04 [RE: ShipLocomotion Process FUN_0069F2A0 @0x69F4C9 --
             // Type->Underwater (+0xD69) never spawns a wake; nor on a bridge]:
@@ -567,13 +569,14 @@ public:
             // V3 / Dreadnought rocket (RocketLocomotion, FUN_00661D00): the
             // launch anim when the tilt ends and it leaves the launcher, then
             // the trail every 3 frames while it flies.
-            if (u.an.t.missile || pres_upper(u.image) == v3_image() || pres_upper(u.image) == dmisl_image()) {
+            if ((u.an.t.missile || pres_upper(u.image) == v3_image() || pres_upper(u.image) == dmisl_image()) &&
+                w.object_visible_at(g_local_house,u.cell_x,u.cell_y)) {
                 const double z = u.an.t.missile ? u.an.rocket.terrain_origin_level*104.0+u.an.rocket.z : u.level*104.0+u.altitude;
                 if((u.an.rocket.phase==ra2engine::kRocketPause || (u.an.t.rocket_kind==ra2engine::kRocketCMisl && u.an.rocket.phase==ra2engine::kRocketTilt)) && (u.an.rocket.frames%24)==1) {
                     if(fx_->spawn("V3TAKOFF",u.fx,u.fy,0,std::max(0.0,z-10.0)*kFxLepPx))++v3_puffs_;
                 }
                 if (u.an.rocket.phase >= ra2engine::kRocketClimb) {
-                    if (rocket_launched_.insert(i).second) {
+                    if (launch_edge) {
                         if (fx_->spawn("V3TAKOFF", u.fx, u.fy, 0, std::max(0.0, z - 10.0) * kFxLepPx)) ++v3_puffs_;
                     } else if (frame_ % 3 == 0) {
                         if (fx_->spawn("V3TRAIL", u.fx, u.fy, 0, z * kFxLepPx)) ++v3_puffs_;
@@ -608,7 +611,7 @@ public:
     std::string unit_weapon(const std::string& image, int slot) { return weapon_of(unit_id(image), slot); }
     // A rules key with the effects' RA2-first section lookup (AmbientSound, ...).
     std::string rules_key(const std::string& s, const std::string& k) const { return rget(s, k); }
-    std::set<std::size_t> rocket_launched_;   // W4: rockets that showed their launch anim
+    ra2engine::RocketLaunchTracker rocket_launches_;   // W4: rockets that showed their launch anim
     // W4 (W4-PJ-02/03/05/06/07): the projectile in flight, drawn from the
     // weapon that FIRED it (unit slot or base defence), its art [Image]:
     // Voxel=yes bullets (ZBOMB, SUBT, the Grand Cannon shell) as a voxel at

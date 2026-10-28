@@ -104,7 +104,25 @@ const ra2assets::CsfStrings* csf(const std::string& dir) {
 }
 std::string csf_text(const std::string& dir, const std::string& label) {
     const ra2assets::CsfStrings* c = csf(dir);
-    const std::u16string* t = c ? c->find(label) : nullptr;
+    static std::map<std::string, std::unique_ptr<ra2assets::CsfStrings>> expansion;
+    auto it = expansion.find(dir);
+    if (it == expansion.end()) {
+        std::unique_ptr<ra2assets::CsfStrings> strings;
+        try {
+            std::vector<std::uint8_t> raw;
+            if (const auto mod=ra2assets::active_mod()) mod->read("ra2md.csf",raw);
+            if (raw.empty()) try { raw = ra2assets::read_file(dir + "ra2md.csf"); } catch (const std::exception&) {}
+            if (raw.empty()) {
+                MixFile lang = MixFile::open_path(dir + "langmd.mix");
+                if (const MixEntry* e = lang.find(std::string("ra2md.csf"))) raw = lang.read(*e);
+            }
+            if (raw.empty()) throw std::runtime_error("YR strings unavailable");
+            strings = std::make_unique<ra2assets::CsfStrings>(ra2assets::CsfStrings::load(raw.data(), raw.size()));
+        } catch (const std::exception&) {}
+        it = expansion.emplace(dir, std::move(strings)).first;
+    }
+    const std::u16string* t = it->second ? it->second->find(label) : nullptr;
+    if (!t && c) t = c->find(label);
     if (!t) return label;
     std::string out;
     for (char16_t ch : *t) out += (ch >= 32 && ch < 127) ? (char)ch : (ch == '\n' ? '\n' : ' ');
@@ -112,7 +130,16 @@ std::string csf_text(const std::string& dir, const std::string& label) {
 }
 
 // battle.ini / mission.ini / mapsel.ini from ra2.mix/local.mix (RE §1).
-ra2engine::CampaignTables load_tables(const MixFile& ra2) {
+bool yr_map(const std::string& map) {
+    const auto u = up(map);
+    return u.size() >= 6 && u.compare(u.size()-6, 6, "MD.MAP") == 0;
+}
+ra2engine::CampaignTables load_tables(const MixFile& ra2, const std::string& map = "") {
+    if (yr_map(map)) {
+        const auto dir = env_install_dir();
+        return ra2engine::CampaignTables::parse(load_ini_from_ra2md(dir, "battlemd.ini"),
+            load_ini_from_ra2md(dir, "missionmd.ini"), load_ini_from_ra2md(dir, "mapselmd.ini"));
+    }
     return ra2engine::CampaignTables::parse(load_ra2_local_ini(ra2, "battle.ini"),
                                             load_ra2_local_ini(ra2, "mission.ini"),
                                             load_ra2_local_ini(ra2, "mapsel.ini"));
@@ -213,7 +240,7 @@ public:
             } else if (index_of(vehicles_, id) >= 0 || index_of(aircraft_, id) >= 0) {
                 // W2-CA-16: aircraft resolve through the same voxel loader
                 // (resolve_an_type sets the fixed-wing / jumpjet flight model).
-                auto va = std::make_unique<VehicleAssets>(load_vehicle_assets(dir_, ra2_, ua_.pal, id));
+                auto va = std::make_unique<VehicleAssets>(load_vehicle_assets(dir_, ra2_, ua_.pal, id, &rules_));
                 if (va->ok) {
                     t.combat = va->combat;
                     // W6 fix #2: the voxel loader resolves with the stock rulesmd;
@@ -324,7 +351,7 @@ public:
                     BuildingAssets& ba, const Rules& rules, const Art& art, const Ini& rules_ini)
         : launch_(launch), dir_(dir), w_(world), a_(a), ba_(ba), rules_ini_(rules_ini),
           map_(camp::load_map_ini(dir, launch.map)),
-          ra2_rules_(camp::load_ra2_rules_ini(dir, ra2)),
+          ra2_rules_(camp::yr_map(launch.map) ? load_ini_from_ra2md(dir, "rulesmd.ini") : camp::load_ra2_rules_ini(dir, ra2)),
           basic_(ra2engine::parse_scenario_basic(map_)),
           types_(dir, ra2, language, ua, rules, art, rules_ini),
           data_(ra2engine::parse_map_triggers(map_, camp::list_values(ra2_rules_, "Countries"),

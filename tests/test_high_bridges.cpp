@@ -160,3 +160,43 @@ TEST_CASE("R-210 World: deck grids per domain, the deck layer, allied gates") {
     w.open_gates_for(1, open);
     CHECK(open.size() == 3);
 }
+
+TEST_CASE("high bridges: every lane sorts above the sprite anchor in both orientations") {
+    for (int overlay : {0x18,0x19,0xED,0xEE}) {
+        int xs[4],ys[4]; REQUIRE(high_bridge_section_cells(overlay,25,25,xs,ys));
+        const double anchor=50.99;
+        for(int k=0;k<4;++k) {
+            CHECK(deck_unit_depth(xs[k],ys[k],xs[k],ys[k],true,anchor)>anchor);
+            CHECK(deck_unit_depth(xs[k]-0.4,ys[k],xs[k],ys[k],true,anchor)>anchor);
+            CHECK(deck_unit_depth(xs[k],ys[k],xs[k],ys[k],false,anchor)==xs[k]+ys[k]);
+        }
+    }
+}
+
+TEST_CASE("high bridges: instant force fire targets the deck layer before collapse") {
+    auto map=ra2assets::MapFile::parse("[Map]\nSize=0,0,16,16\nLocalSize=0,0,16,16\n");
+    auto& cells=const_cast<std::vector<ra2assets::MapCell>&>(map.cells());
+    for(int y=0;y<16;++y)for(int x=0;x<16;++x)cells.push_back({x,y,0,0,0});
+    World w(map);const int W=w.grid_w();const auto n=std::size_t(W)*w.grid_h();
+    w.set_land_terrain(std::vector<ra2assets::LandType>(n,ra2assets::LandType::Water));
+    std::vector<std::uint8_t> hb(n,0);hb[8*W+8]=1;w.set_high_bridges(hb);
+    World::LandSpeedRules speed;
+    w.arm_land_speed(std::vector<std::uint8_t>(n,std::uint8_t(ra2assets::LandType::Water)),std::vector<std::uint8_t>(n,0),speed);
+    UnitCombat ship;ship.image="SHIP";ship.strength=100;ship.is_naval=true;ship.movement_domain=MovementDomain::Water;
+    const int below=int(w.units().size());w.add_combat_unit(8,8,1,ship);
+    UnitCombat tank; tank.image="TANK";tank.strength=100;
+    const int above=int(w.units().size());w.add_combat_unit(8,8,1,tank);w.sync_deck_layer(w.units()[above]);
+    REQUIRE(w.units()[above].on_deck==1);
+    auto& occupancy=const_cast<Occupancy&>(w.occupancy());
+    occupancy.mark_layer(above,1);occupancy.set(8,8,above,1);occupancy.set(8,8,below,0);
+    REQUIRE(occupancy.at(8,8,1)==above);REQUIRE(occupancy.at(8,8,0)==below);
+    UnitCombat gun;gun.image="GUN";gun.strength=100;gun.damage=10;gun.verses.assign(11,100);
+    const int attacker=int(w.units().size());w.add_combat_unit(6,8,0,gun);
+    w.units()[attacker].attack_cell_x=8;w.units()[attacker].attack_cell_y=8;
+    w.units()[attacker].cell_shot=true;w.step_depth(1.0/15.0);
+    CHECK(w.units()[below].hp==100);CHECK(w.units()[above].hp==90);
+    World::DepthRules rules;rules.armed=true;rules.bridge_strength=1;w.set_depth_rules(rules);
+    w.units()[attacker].w_damage=200;w.units()[attacker].p_wall=true;w.units()[attacker].cell_shot=true;
+    w.step_depth(1.0/15.0);
+    CHECK(w.high_bridge_destroyed(8,8));CHECK(w.units()[below].hp<=0);CHECK(w.units()[above].hp<=0);
+}

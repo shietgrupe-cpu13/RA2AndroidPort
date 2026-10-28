@@ -23,7 +23,7 @@ void World::release_unit_mind_control(int controller) {
 }
 
 void World::prepare_skirmish_mind_control() {
-    if (playfield_.campaign) return; // CampaignRuntime owns its team bookkeeping.
+    // CampaignRuntime owns unit-controller bookkeeping; towers are shared.
     for (int i = 0; i < static_cast<int>(units_.size()); ++i) {
         Unit& v = units_[i];
         const int c = v.w7.mc_controller;
@@ -41,7 +41,7 @@ void World::prepare_skirmish_mind_control() {
                 set_unit_owner(i,v.w7.mc_original_house);
             v.w7.mc_building = v.w7.mc_original_house = -1;
         }
-        if (c >= 0 && (c >= static_cast<int>(units_.size()) || !active(units_[c]) ||
+        if (!playfield_.campaign && c >= 0 && (c >= static_cast<int>(units_.size()) || !active(units_[c]) ||
                        units_[c].warp_remaining > 0 || !v.alive || v.die_time>=0 || units_[c].house != v.house)) {
             if (c < static_cast<int>(units_.size())) {
                 auto& victims = units_[c].w7.mc_victims;
@@ -52,6 +52,7 @@ void World::prepare_skirmish_mind_control() {
             v.w7.mc_controller = v.w7.mc_original_house = -1;
         }
     }
+    if (playfield_.campaign) return;
     for (Unit& u : units_) {
         if (!u.w7.t.mind_control) continue;
         auto& held=u.w7.mc_victims;
@@ -118,7 +119,7 @@ void World::resolve_skirmish_mind_control() {
 }
 
 bool World::try_building_mind_control(int bi,int vi,int slot) {
-    if (playfield_.campaign || bi<0 || bi>=static_cast<int>(buildings_.size()) ||
+    if (bi<0 || bi>=static_cast<int>(buildings_.size()) ||
         vi<0 || vi>=static_cast<int>(units_.size()) || slot<0 || slot>1) return false;
     Building& b=buildings_[bi]; Unit& v=units_[vi];
     if (!b.alive || b.state!=Building::State::Idle || b.power_off || b.w7.warp_unpowered ||
@@ -235,8 +236,19 @@ void World::step_yuri_workers(bool relocate) {
         const auto& b=buildings_[bi];
         bool loaded=false;
         int near_x=0,near_y=0;
-        const bool local=find_reachable_ore(ore_,passable_,grid_w_,grid_h_,occ_,-1,b.cx,b.cy,6,-1,-1,near_x,near_y) &&
-            near_x>=b.cx-2 && near_x<=b.cx+b.fw+1 && near_y>=b.cy-2 && near_y<=b.cy+b.fh+1;
+        bool local=false;
+        // Workers are the reachability authority: the manager's foundation is blocked.
+        for (int wi=0;wi<static_cast<int>(units_.size()) && !local;++wi) {
+            const auto& worker=units_[wi];
+            if (!active(worker) || worker.w7.slave_manager!=bi) continue;
+            if (worker.harv==HarvState::MoveToOre || worker.harv==HarvState::Harvesting) {
+                local=ore_.has_ore(worker.harv_cell_x,worker.harv_cell_y);
+                if (local) break;
+            }
+            local=find_reachable_ore(ore_,passable_,grid_w_,grid_h_,occ_,wi,
+                worker.cell_x,worker.cell_y,14,-1,-1,near_x,near_y,nullptr,
+                b.cx+(b.fw-1)/2,b.cy+(b.fh-1)/2);
+        }
         if (local) continue;
         for (const auto& worker:units_)
             if (active(worker) && worker.w7.slave_manager==bi && worker.bales_ore+worker.bales_gems>0) {loaded=true;break;}

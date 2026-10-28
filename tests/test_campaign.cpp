@@ -466,3 +466,38 @@ TEST_CASE("W4-MC-03/04: HomeCell and LocalSize usable area (ALL01)") {
     CHECK(d.home_cell == 98);
     CHECK_FALSE(ra2engine::parse_map_local_size(Ini::parse("")).valid);
 }
+
+TEST_CASE("campaign: Yuri's Revenge tables retain separate Allied and Soviet progression") {
+    auto t=CampaignTables::parse(Ini::parse("[Battles]\n1=ALL1\n2=SOV1\n[ALL1]\nScenario=all01umd.map\n[SOV1]\nScenario=sov01umd.map\n"),Ini::parse(""),
+        Ini::parse("[GDI]\n1=ALL01\n2=ALL02\n[Nod]\n1=SOV01\n2=SOV02\n[ALL01]\nScenario=ALL01umd.MAP\n2=ALL02\n[ALL02]\nScenario=ALL02umd.MAP\n[SOV01]\nScenario=SOV01umd.MAP\n2=SOV02\n[SOV02]\nScenario=SOV02smd.MAP\n"));
+    REQUIRE(t.battle("ALL1")); CHECK(t.battle("ALL1")->scenario=="all01umd.map");
+    CHECK(t.next_scenario("GDI","all01umd.map")=="ALL02umd.MAP");
+    CHECK(t.next_scenario("Nod","sov01umd.map")=="SOV02smd.MAP");
+}
+
+TEST_CASE("campaign: retail YR control files expose both seven-mission chains") {
+    if (!ra2fixture::assets_available()) { MESSAGE("YR assets unavailable"); return; }
+    auto ini=[](const char* name) {
+        const auto raw=ra2fixture::resolve_nested_bytes(name);
+        return Ini::parse(std::string(raw.begin(),raw.end()));
+    };
+    const auto t=CampaignTables::parse(ini("battlemd.ini"),ini("missionmd.ini"),ini("mapselmd.ini"));
+    for(const auto& side : {"GDI","Nod"}) {
+        const auto* b=t.battle(std::string(side)=="GDI"?"ALL1":"SOV1"); REQUIRE(b);
+        auto map=b->scenario; int count=0;
+        while(!map.empty() && count<10) {
+            CHECK(t.mission(map).found);
+            if (!ra2fixture::mix_bytes_by_name("mapsmd03.mix").empty()) {
+                const auto& archive=ra2fixture::mix_by_name("mapsmd03.mix");
+                const auto* entry=archive.find(map); REQUIRE(entry);
+                const auto raw=archive.read(*entry);
+                const auto scenario=Ini::parse(std::string(raw.begin(),raw.end()));
+                CHECK_FALSE(parse_map_objects(scenario).empty());
+                CHECK_FALSE(parse_scenario_basic(scenario).player.empty());
+                CHECK_FALSE(scenario.section("Triggers").empty());
+            }
+            ++count; map=t.next_scenario(side,map);
+        }
+        CHECK(count==7); CHECK(map.empty());
+    }
+}

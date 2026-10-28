@@ -1,16 +1,40 @@
 #include "sidebar.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 namespace ra2engine {
 
-namespace { int g_sidebar_style = 0; }
+namespace { int g_sidebar_style = 0, g_sidebar_scale = 100, g_sidebar_cells = 0, g_sidebar_reference_height = 0; }
+void set_sidebar_reference_height(int height) { g_sidebar_reference_height=std::max(0,height); }
+void set_sidebar_preferences(int scale, int cells) {
+    g_sidebar_scale = std::clamp(scale,60,125);
+    g_sidebar_cells = cells <= 0 ? 0 : std::clamp(cells/2*2,6,60);
+}
+int sidebar_scale() { return g_sidebar_scale; }
+int sidebar_cells() { return g_sidebar_cells; }
+void SidebarLayout::scale_rects(float f) {
+    auto rect=[&](SbRect& r) { r={int(std::lround(r.x*f)),int(std::lround(r.y*f)),int(std::lround(r.w*f)),int(std::lround(r.h*f))}; };
+    rect(bar);rect(credits);rect(top_cap);rect(radar);rect(side1);
+    for(auto& r:tabs)rect(r);
+    rect(power);rect(scroll_dn);rect(scroll_up);rect(repair_btn);rect(sell_btn);rect(opt_btn);rect(diplo_btn);
+    for(auto& c:cameos)rect(c.rect);
+    strip_top=int(std::lround(strip_top*f));
+}
+SidebarLayout SidebarLayout::unscaled() const {
+    SidebarLayout n=*this;n.scale_rects(1.0f/scale);n.scale=1.0f;return n;
+}
 void set_sidebar_style(int style) { g_sidebar_style = style == 1 || style == 2 ? style : 0; }
 int sidebar_style() { return g_sidebar_style; }
 
 SidebarLayout SidebarLayout::compute(int view_w, int view_h,
                                      const std::vector<int>& types, int top_row) {
     SidebarLayout lay;
+    lay.scale=g_sidebar_scale/100.0f;
+    // Phone chrome uses screen-relative sizing, independent of the world resolution.
+    if(g_sidebar_reference_height>0)lay.scale*=float(view_h)/g_sidebar_reference_height;
+    view_w=int(std::ceil(view_w/lay.scale));
+    view_h=int(std::ceil(view_h/lay.scale));
     const bool sov = g_sidebar_style != 0;   // Yuri shares the Soviet geometry (construction.md)
     const int side3_h = sov ? 18 : kSide3H;
 
@@ -40,6 +64,7 @@ SidebarLayout SidebarLayout::compute(int view_w, int view_h,
     // Visible cameo rows: N = floor((view_h - 234 - side3_h)/50), min 1
     // [RE: §11a] — 6 at 600 px, 9 at 720 px. side2 tiles once per row.
     lay.side2_rows = std::max(1, (view_h - 234 - side3_h) / kCameoRowPitch);
+    if(g_sidebar_cells)lay.side2_rows=std::min(lay.side2_rows,g_sidebar_cells/2);
     const int strip_h = lay.side2_rows * kSide2H;
 
     // Power pip column hugs the strip's left edge from the strip top;
@@ -52,6 +77,10 @@ SidebarLayout SidebarLayout::compute(int view_w, int view_h,
     const int scroll_y = kStripTop + strip_h + 7;
     lay.scroll_dn = {x0 + kScrollX, scroll_y, kScrollW, kScrollH};
     lay.scroll_up = {x0 + kScrollX + (sov ? 45 : kScrollW), scroll_y, kScrollW, kScrollH};
+    if(g_sidebar_cells && scroll_y+kScrollH<view_h) {
+        lay.compact=true;
+        lay.bar.h=scroll_y+kScrollH;
+    }
 
     // Cameo grid: origin (22, strip_top + 1), column pitch 63, row pitch 50,
     // 2 columns row-major — these land the 60x48 cameos INSIDE the socket
@@ -71,6 +100,7 @@ SidebarLayout SidebarLayout::compute(int view_w, int view_h,
         lay.cameos.push_back(cell);
     }
 
+    lay.scale_rects(lay.scale);
     return lay;
 }
 

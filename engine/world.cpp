@@ -1513,6 +1513,7 @@ void World::order_unit_move(int idx, int gx, int gy) {
     // Desolator) owned by a human refuses the move (the destination is
     // cleared, it stays put); a computer-owned one undeploys first (the
     // Undeploy sequence and sound) and then walks.
+    if(u.deployed && u.is_aircraft && u.deploy_fire)(void)order_deploy(idx);
     if (u.deployed && !u.is_vehicle && (u.deploy_fire || u.abil.deployer)) {
         if (!house_is_computer(u.house)) return;
         (void)order_deploy(idx);   // toggles back: emits Deploy(0)
@@ -6638,7 +6639,7 @@ void World::launch_projectile(int attacker, int target_unit, int target_building
     const double lateral=spec.flh[1]*(shot&1 ? -1.0 : 1.0);
     double mx=spec.flh[0]*fwx+lateral*fwy;
     double my=spec.flh[0]*fwy-lateral*fwx;
-    if(u.is_vehicle && !u.is_aircraft && u.w7.t.has_turret && spec.turret_offset) {
+    if(u.is_vehicle && (!u.is_aircraft || (u.deploy_fire && u.deployed && u.altitude<=0.0)) && u.w7.t.has_turret && spec.turret_offset) {
         const double a=u.body_facing*(2.0*kProjPi/65536.0);
         mx+=spec.turret_offset*om::sin(a);
         my-=spec.turret_offset*om::cos(a);

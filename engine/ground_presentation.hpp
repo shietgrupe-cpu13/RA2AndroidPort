@@ -13,8 +13,8 @@ template<class W,class U> bool unit_on_high_bridge(const W& w,const U& u) {
     const auto i=static_cast<std::size_t>(u.cell_y)*w.grid_w()+u.cell_x;
     return i < water.size() && water[i] != 0;
 }
-inline double deck_unit_depth(double fx,double fy,int cx,int cy,bool deck) {
-    return deck ? std::max(fx+fy,double(cx+cy))+1.001 : fx+fy;
+inline double deck_unit_depth(double fx,double fy,int cx,int cy,bool deck, double artwork_depth = -1.0) {
+    return deck ? std::max(std::max(fx+fy,double(cx+cy))+1.001, artwork_depth+0.001) : fx+fy;
 }
 // Visual interpolation of legal movement only; no simulation height changes.
 inline double segment_ground_level(double fx,double fy,int sx,int sy,int tx,int ty,double a,double b) {

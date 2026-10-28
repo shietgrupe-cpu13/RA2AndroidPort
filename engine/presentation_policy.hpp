@@ -2,8 +2,21 @@
 #include <algorithm>
 #include <cstdint>
 #include <map>
+#include <set>
+#include <cstddef>
 #include <string>
 namespace ra2engine {
+inline bool health_bar_visible(int mode,bool selected,bool damaged,bool hovered=false,bool repairing=false) {
+    return mode==2 || (mode==1 && (selected || damaged || hovered || repairing));
+}
+class RocketLaunchTracker {
+    std::set<std::size_t> launched_;
+public:
+    bool observe(std::size_t slot,bool active,bool flying) {
+        if(!active || !flying){launched_.erase(slot);return false;}
+        return launched_.insert(slot).second;
+    }
+};
 // Presentation only: repeated speech never suppresses the command itself.
 class SpeechCooldown {
     std::map<std::string,std::uint64_t> spoken_;

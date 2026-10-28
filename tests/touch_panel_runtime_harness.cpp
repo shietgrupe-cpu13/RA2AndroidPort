@@ -7,6 +7,8 @@
 #include <vector>
 #include <climits>
 #include <cstdlib>
+#include <cmath>
+#include <algorithm>
 #include <SDL.h>
 #undef main
 #include "input.hpp"
@@ -31,6 +33,8 @@ struct FakeWorld {
  std::vector<ra2engine::Building> bs;
  const auto& units()const{return us;} const auto& buildings()const{return bs;}
  bool controllable(int h)const{return h==0;}
+ bool power_ready=false;
+ bool sw_ready(int,ra2engine::SuperweaponType)const{return power_ready;}
  bool packable=false;
  bool can_pack_slave_miner(int)const{return packable;}
  bool can_pack_conyard(int)const{return false;}
@@ -59,7 +63,10 @@ struct Scene {
  struct Layout{bool contains(int,int)const{return false;}}lay_;
  struct Cam{double x=0,y=0;}cam_;
  double view_cam_[3][2]{}; bool view_set_[3]{};
- int kWinH=548,playfield_w_=800,deploys=0;
+ int kWinW=1280,kWinH=548,playfield_w_=800,deploys=0,armed=0,yuri_deploys=0;
+ bool touch_yuri_deploy_available(bool)const{return true;}
+ void touch_yuri_deploy(bool){++yuri_deploys;}
+ void w2_arm_sw(ra2engine::SuperweaponType t){armed=int(t);}
  struct Def{std::string id;ra2engine::UnitCombat combat;};
  struct Roster{std::vector<Def> defs;std::vector<char>has_cameo;std::vector<ra2assets::ShpFile>cameos;}ur_;
  struct Assets{ra2assets::Palette cameo_pal;}ba_;
@@ -67,7 +74,36 @@ struct Scene {
  #include "touch_bar.inc"
 };
 InputEvent event(InputEvent::Kind kind,int x,int y){InputEvent e;e.kind=kind;e.touch=true;e.x=x;e.y=y;return e;}
-int main(){
+int main(int argc,char** argv){
+ if(argc>1 && std::string(argv[1])=="--free") {
+  Scene s;s.touch_ui_=true; // Old folded preference must not hide free buttons.
+  assert(s.touch_free_layout());assert(s.touch_panel_collapsed_);assert(s.touch_btn_count()==3);
+  assert(s.touch_panel_rect().w==0 && s.touch_panel_rect().h==0);
+  auto r=s.touch_btn_rect(0);assert(r.x+r.w==s.kWinW && r.y==0);assert(r.h==22);
+  assert(!s.touch_panel_toggle_at(10,s.kWinH-10));
+  assert(!s.touch_panel_contains(10,s.kWinH-10)); // Old panel space belongs to the map.
+  assert(s.touch_panel_contains(r.x+2,r.y+2)); // Beyond the old playfield/dock.
+  ra2engine::Unit u;u.house=0;u.alive=true;s.world_.us.push_back(u);s.input_.sel.set(0);
+  auto down=event(InputEvent::PointerDown,r.x+2,r.y+2),up=down;up.kind=InputEvent::PointerUp;
+  assert(s.touch_bar_handle(down));assert(s.touch_bar_handle(up));assert(s.input_.stops==1);
+  auto deploy=s.touch_btn_rect(2);assert(deploy.y+deploy.h==s.kWinH);
+  s.kWinW=1920;s.kWinH=1080;auto corner=s.touch_btn_rect(0);assert(corner.x+corner.w==1920);
+  std::cout<<"Free HUD: no dock, compact per-button sizing, screen corners and real command routing passed\n";return 0;
+ }
+ if(argc>1) {
+  Scene s;s.touch_ui_=true;s.touch_panel_collapsed_=false;
+  if(std::string(argv[1])=="--empty") {assert(s.touch_buttons().empty());assert(s.touch_btn_count()==0);return 0;}
+  assert(s.touch_buttons().size()==5);
+  auto r=s.touch_btn_rect(0);assert(r.x>500);assert(s.touch_panel_contains(r.x+2,r.y+2));
+  auto pan=event(InputEvent::Pan,20,20);pan.x0=r.x+2;pan.y0=r.y+2;assert(s.touch_bar_handle(pan));
+  assert(s.touch_action_id("GROUP0")==s.TB_GROUP1+9);
+  assert(!s.touch_button_enabled(s.TB_DOMINATOR));s.world_.power_ready=true;
+  assert(s.touch_button_enabled(s.TB_DOMINATOR));s.touch_command(s.TB_DOMINATOR,false,0);
+  assert(s.armed==int(ra2engine::SuperweaponType::PsychicDominator));
+  s.touch_command(s.TB_PSI,false,0);s.touch_command(s.TB_MINER,false,0);assert(s.yuri_deploys==2);
+  std::cout<<"Floating capture, schema 2, all-hidden layout and Yuri shortcuts passed\n";return 0;
+ }
+
  Scene s;s.touch_ui_=true;
  assert(s.touch_panel_collapsed_);s.touch_panel_collapsed_=false;
  assert(s.touch_bar_visible());s.net_chat_open_=true;assert(!s.touch_bar_visible());

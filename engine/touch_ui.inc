@@ -24,12 +24,18 @@ bool touch_banner_visible() const {
 }
 // Armed-mode instructions and cancel sit above the shortcut dock.
 SDL_Rect touch_banner_rect() const {
+    if(touch_free_layout()) {
+        const float unit=ra2engine::TouchBarLayout::dp_to_canvas;
+        const int w=std::min(kWinW,int(224*unit)),h=std::min(kWinH,int(36*unit));
+        return SDL_Rect{(kWinW-w)/2,int((kWinH-h)*0.8f),w,h};
+    }
     const auto b = ra2engine::TouchBarLayout::banner(playfield_w_,touch_bar_top());
     return SDL_Rect{b.x,b.y,b.w,b.h};
 }
 SDL_Rect touch_cancel_rect() const {
     const SDL_Rect b = touch_banner_rect();
-    return SDL_Rect{b.x+b.w-44,b.y+2,44,44};
+    const int side=touch_free_layout()?b.h:44;
+    return SDL_Rect{b.x+b.w-side,b.y,side,side};
 }
 static bool in_rect(const SDL_Rect& r, int x, int y) {
     return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;

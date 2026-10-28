@@ -67,6 +67,8 @@ struct Settings {
     bool auto_scroll = true;
     int  detail_level = 2;
     bool sidebar_cameo_text = true;
+    int sidebar_scale = 100;
+    int sidebar_cells = 0; // Auto, or an even number of cameo boxes (6..60).
     bool unit_action_lines = true; // "Target Lines"
     bool show_hidden = false;
     bool tooltips = true;
@@ -74,6 +76,9 @@ struct Settings {
     int  screen_width = -1;
     int  screen_height = -1;
     bool stretch_movies = false;
+    bool display_override = false;
+    bool widescreen = true;
+    int hud_text_size = 100;       // in-game game.fnt scale percent; independent of display resolution
     bool allow_hires_modes = false;   // load-only (never saved by the original)
     bool allow_vram_sidebar = false;  // load-only
     // [Audio]

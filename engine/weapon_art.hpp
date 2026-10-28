@@ -3,8 +3,22 @@
 #include "ra2assets/rules.hpp"
 #include "unit_combat.hpp"
 #include <array>
+#include <map>
+#include <cstdlib>
 
 namespace ra2engine {
+// Ini section keys are canonical uppercase; weapon modes are zero based.
+inline std::map<int,int> ifv_turret_mapping(const ra2assets::Ini& ini,const std::string& id) {
+    std::map<int,int> out;
+    const std::string suffix="TURRETWEAPON";
+    for(const auto& kv:ini.section(id)) {
+        const auto& key=kv.first;
+        if(key.size()<=suffix.size() || key.compare(key.size()-suffix.size(),suffix.size(),suffix)!=0)continue;
+        const auto index=ini.get(id,key.substr(0,key.size()-suffix.size())+"TurretIndex");
+        if(!index.empty())out[std::atoi(kv.second.c_str())]=std::atoi(index.c_str());
+    }
+    return out;
+}
 // GetFLH's per-weapon art entries (docs/re/voxel-render.md section 6).
 // Preserve the existing primary fallback when a secondary/numbered key is
 // absent or malformed; an explicit zero is valid and must not fall back.

@@ -23,6 +23,16 @@ inline bool asset_read(const std::string& file, std::vector<uint8_t>& out) {
     return asset_fs().read(file, out);
 }
 
+// Required theater palettes use the same patch/base/Yuri search as artwork.
+// Expansion theaters keep their unit palettes in cachemd.mix, not cache.mix.
+inline ra2assets::Palette asset_required_palette(const std::string& name) {
+    std::vector<uint8_t> raw;
+    if (!asset_read(name, raw))
+        throw std::runtime_error("Required palette " + name +
+            " not found in imported base, patch or Yuri game archives");
+    return ra2assets::Palette::load(raw.data(), raw.size());
+}
+
 // Decodes the first SHP found for `bases` x `exts` (ext-major). Returns the
 // file name ("" when none) and fills `out`.
 inline std::string asset_find_shp(const std::vector<std::string>& bases, const std::vector<std::string>& exts,

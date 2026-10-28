@@ -1032,8 +1032,10 @@ void World::step_depth(double dt) {
         const bool wall = u.w_active == 1 ? u.w2.wall : u.p_wall;
         // [RE-FALLBACK: a ground-fire shell at a bridge cell bursts at the
         // cell's bridge coordinates (GetCoordsWithBridge): the deck height]
+        // Resolve the intended layer before a collapse clears its occupants.
+        // Force-fire at bridge coordinates must not hit a ship underneath.
+        const int victim = occ_.at(x, y, deck_intact(x,y) ? 1 : 0);
         bridge_explosion(x, y, u.w_damage, wall, deck_z(x, y));
-        const int victim = occ_.at(x, y);
         if (victim >= 0 && victim != i && victim < static_cast<int>(units_.size()))
             deliver_unit_hit(units_, occ_, i, victim);
         const int bb = building_at_cell(x, y);

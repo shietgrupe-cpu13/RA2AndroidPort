@@ -1,5 +1,4 @@
 package org.ra2.engine;
-// Android fork additions by Bryle13; project 0BSD license.
 
 import android.app.AlertDialog;
 import android.app.Dialog;
@@ -9,536 +8,158 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
-import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.Window;
 import android.view.WindowManager;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
-import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.FrameLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 
-/** Clean touch control mapping with professional layout presets, left-side dock alignment, and fullscreen drag editor. */
+/** Edits a draft; only Save commits preferences used by the next game session. */
 final class TouchSettings {
-
-    static class ActionItem {
-        final String id;
-        final String label;
-        final String defaultHotkey;
-        final int maskBit;
-        boolean active;
-        float xPct = -1f; // Free placement X percentage (0-100) or -1 for default dock
-        float yPct = -1f; // Free placement Y percentage (0-100) or -1 for default dock
-
-        ActionItem(String id, String label, String defaultHotkey, int maskBit, boolean active) {
-            this.id = id;
-            this.label = label;
-            this.defaultHotkey = defaultHotkey;
-            this.maskBit = maskBit;
-            this.active = active;
-        }
+    private static int dp(Context c,float n) { return Math.round(c.getResources().getDisplayMetrics().density*n); }
+    private static TextView label(Context c,String text) {
+        TextView v=new TextView(c);v.setText(text);v.setTextSize(14);v.setTextColor(Color.rgb(220,232,235));
+        v.setPadding(dp(c,8),dp(c,6),dp(c,8),dp(c,6));return v;
     }
-
-    private static final List<ActionItem> ALL_ACTIONS = Arrays.asList(
-            new ActionItem("STOP", "Stop", "S", 0, true),
-            new ActionItem("GUARD", "Guard", "G", 1, true),
-            new ActionItem("DEPLOY", "Deploy / Unload", "D", 2, true),
-            new ActionItem("SCATTER", "Scatter", "X", 3, true),
-            new ActionItem("FIRE", "Force Fire", "Ctrl", 4, true),
-            new ActionItem("MOVE", "Attack Move", "Ctrl + Shift", 5, true),
-            new ActionItem("ADD", "Add Selection", "Shift", 6, true),
-            new ActionItem("BOX", "Box Select Mode", "Drag Box", -1, false),
-            new ActionItem("ROUTE", "Waypoint Route Z", "Z", -1, false),
-            new ActionItem("HOME", "Home Base View", "H", -1, false)
-    );
-
+    private static Button button(Context c,String text,Runnable action) {
+        Button v=new Button(c);v.setText(text);v.setMinHeight(dp(c,48));v.setOnClickListener(w->action.run());return v;
+    }
+    private static Spinner spinner(Context c,String[] values,int selection) {
+        Spinner v=new Spinner(c);v.setAdapter(new ArrayAdapter<>(c,android.R.layout.simple_spinner_dropdown_item,values));
+        v.setSelection(Math.max(0,Math.min(values.length-1,selection)));v.setMinimumHeight(dp(c,48));return v;
+    }
+    private static LinearLayout row(Context c) { LinearLayout v=new LinearLayout(c);v.setOrientation(LinearLayout.HORIZONTAL);return v; }
+    private static void weighted(LinearLayout row,View child) {row.addView(child,new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1));}
     static void show(Context context) {
-        SharedPreferences p = context.getSharedPreferences("interface", Context.MODE_PRIVATE);
-
-        int mask = p.getInt("touch_actions", 127);
-        String savedMapping = p.getString("touch_mapping", "");
-        String savedPositions = p.getString("touch_positions", "");
-        int savedScale = p.getInt("touch_scale", 100);
-        int savedOpacity = p.getInt("touch_opacity", 100);
-        boolean savedCollapsed = p.getBoolean("touch_collapsed", true);
-        int savedDock = p.getInt("touch_dock", 0);
-
-        List<ActionItem> currentLayout = parseLayout(savedMapping, savedPositions, mask);
-
-        float density = context.getResources().getDisplayMetrics().density;
-        int dp8 = Math.round(8 * density);
-        int dp12 = Math.round(12 * density);
-        int dp16 = Math.round(16 * density);
-
-        LinearLayout root = new LinearLayout(context);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp16, dp16, dp16, dp16);
-
-        TextView subtitle = new TextView(context);
-        subtitle.setText("Choose layout presets, left-side dock alignment, or open the Fullscreen Touch Position Editor.");
-        subtitle.setTextSize(13);
-        subtitle.setTextColor(Color.rgb(160, 182, 193));
-        subtitle.setPadding(0, 0, 0, dp12);
-        root.addView(subtitle);
-
-        // --- PRESET SELECTION SPINNER ---
-        TextView presetLabel = new TextView(context);
-        presetLabel.setText("CONTROL LAYOUT PRESETS:");
-        presetLabel.setTextSize(12);
-        presetLabel.setTextColor(Color.rgb(135, 163, 181));
-        root.addView(presetLabel);
-
-        Spinner presetSpinner = new Spinner(context);
-        String[] presets = {
-            "Classic Command Dock",
-            "Left-Side Margin Optimized",
-            "Thumb Comfort (Ergonomic Arc)",
-            "Tactical Commander (Extended)"
+        SharedPreferences prefs=context.getSharedPreferences("interface",Context.MODE_PRIVATE);
+        List<TouchLayout.Item> layout=TouchLayout.parse(prefs.getString("touch_mapping",""),prefs.getString("touch_positions",""),prefs.getInt("touch_actions",127),prefs.getInt("touch_layout_version",1));
+        if(prefs.getBoolean("touch_free_layout",true))TouchLayout.ensurePositions(layout);
+        LinearLayout root=new LinearLayout(context);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(context,12),0,dp(context,12),0);
+        root.addView(label(context,"Drag controls in the landscape editor. Hide unwanted buttons and restore them later. Save applies on the next game launch."));
+        LinearLayout choices=row(context);
+        Spinner preset=spinner(context,new String[]{"Keep saved layout","Free screen layout","Classic dock","Two-thumb layout","Yuri controls"},0);
+        int[] sizeValues={50,65,80,100,120,140};int sizeIndex=3;
+        for(int i=0;i<sizeValues.length;i++)if(sizeValues[i]==prefs.getInt("touch_scale",100))sizeIndex=i;
+        Spinner scale=spinner(context,new String[]{"Size: 50%","Size: 65%","Size: 80%","Size: 100%","Size: 120%","Size: 140%"},sizeIndex);
+        int[] opValues={100,85,70,50};int op=0;for(int i=0;i<opValues.length;i++)if(opValues[i]==prefs.getInt("touch_opacity",100))op=i;
+        Spinner opacity=spinner(context,new String[]{"Opacity: 100%","Opacity: 85%","Opacity: 70%","Opacity: 50%"},op);
+        weighted(choices,preset);weighted(choices,scale);weighted(choices,opacity);root.addView(choices);
+        Spinner dock=spinner(context,new String[]{"Dock: bottom left","Dock: left edge","Dock: bottom right"},prefs.getInt("touch_dock",0));root.addView(dock);
+        CheckBox free=new CheckBox(context);free.setText("Free screen controls (no large dock panel)");free.setTextColor(Color.WHITE);free.setChecked(prefs.getBoolean("touch_free_layout",true));root.addView(free);
+        CheckBox collapsed=new CheckBox(context);collapsed.setText("Start with controls folded (tap arrow to show)");collapsed.setTextColor(Color.WHITE);collapsed.setChecked(prefs.getBoolean("touch_collapsed",true));collapsed.setMinHeight(dp(context,48));root.addView(collapsed);
+        collapsed.setEnabled(!free.isChecked());dock.setEnabled(!free.isChecked());
+        free.setOnCheckedChangeListener((v,on)->{collapsed.setEnabled(!on);dock.setEnabled(!on);});
+        LinearLayout rows=new LinearLayout(context);rows.setOrientation(LinearLayout.VERTICAL);Runnable[] refresh=new Runnable[1];
+        refresh[0]=()->{
+            rows.removeAllViews();
+            for(TouchLayout.Item item:layout) {
+                LinearLayout r=row(context);CheckBox enabled=new CheckBox(context);enabled.setText(item.label);enabled.setTextColor(Color.WHITE);enabled.setMinHeight(dp(context,48));enabled.setChecked(item.visible);
+                enabled.setOnCheckedChangeListener((v,checked)->{
+                    item.visible=checked;
+                    if(checked && item.x<0){int slot=layout.indexOf(item);item.x=55+(slot%3)*20;item.y=5+(slot%8)*12;}
+                });weighted(r,enabled);
+                r.addView(button(context,"Place",()->showEditor(context,layout,item.id,sizeValues[scale.getSelectedItemPosition()],()->refresh[0].run())));rows.addView(r);
+            }
         };
-        ArrayAdapter<String> presetAdapter = new ArrayAdapter<>(context, android.R.layout.simple_spinner_dropdown_item, presets);
-        presetSpinner.setAdapter(presetAdapter);
-        root.addView(presetSpinner);
-
-        presetSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                applyLayoutPreset(currentLayout, position);
-            }
-            @Override
+        preset.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             public void onNothingSelected(AdapterView<?> parent) { }
+            public void onItemSelected(AdapterView<?> parent,View view,int position,long id) {
+                if(position==0)return;TouchLayout.preset(layout,position==1?3:position-2);free.setChecked(position!=2);refresh[0].run();preset.setSelection(0);
+            }
         });
-
-        // --- DOCK SIDE ALIGNMENT ---
-        TextView dockLabel = new TextView(context);
-        dockLabel.setText("DOCK ALIGNMENT (SIDE / MARGIN):");
-        dockLabel.setTextSize(12);
-        dockLabel.setTextColor(Color.rgb(135, 163, 181));
-        root.addView(dockLabel);
-
-        Spinner dockSpinner = new Spinner(context);
-        String[] dockOptions = {"Bottom-Left (Default)", "Left-Side Margin (Utilize Black Space)", "Bottom-Right"};
-        ArrayAdapter<String> dockAdapter = new ArrayAdapter<>(context, android.R.layout.simple_spinner_dropdown_item, dockOptions);
-        dockSpinner.setAdapter(dockAdapter);
-        dockSpinner.setSelection(savedDock);
-        root.addView(dockSpinner);
-
-        // --- FULLSCREEN TOUCH POSITION EDITOR BUTTON ---
-        Button fullscreenBtn = new Button(context);
-        fullscreenBtn.setText("🖥️   Open Fullscreen Touch Position Editor");
-        fullscreenBtn.setTextColor(Color.rgb(22, 31, 32));
-        fullscreenBtn.setBackgroundColor(Color.rgb(224, 191, 115));
-        fullscreenBtn.setOnClickListener(v -> showFullscreenMapper(context, currentLayout, p));
-        LinearLayout.LayoutParams fsLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        fsLp.setMargins(0, dp12, 0, dp12);
-        root.addView(fullscreenBtn, fsLp);
-
-        // --- SCALE & OPACITY CONTROLS ---
-        LinearLayout optRow = new LinearLayout(context);
-        optRow.setOrientation(LinearLayout.HORIZONTAL);
-        optRow.setPadding(0, dp8, 0, dp8);
-
-        LinearLayout scaleCol = new LinearLayout(context);
-        scaleCol.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams lpCol = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        scaleCol.setLayoutParams(lpCol);
-
-        TextView scaleLabel = new TextView(context);
-        scaleLabel.setText("GUI SCALE:");
-        scaleLabel.setTextSize(12);
-        scaleLabel.setTextColor(Color.rgb(135, 163, 181));
-        scaleCol.addView(scaleLabel);
-
-        Spinner scaleSpinner = new Spinner(context);
-        String[] scaleOptions = {"80% (Compact)", "100% (Standard)", "120% (Large)", "140% (Extra Large)"};
-        Integer[] scaleValues = {80, 100, 120, 140};
-        ArrayAdapter<String> scaleAdapter = new ArrayAdapter<>(context, android.R.layout.simple_spinner_dropdown_item, scaleOptions);
-        scaleSpinner.setAdapter(scaleAdapter);
-        int scaleSel = 1;
-        for (int i = 0; i < scaleValues.length; i++) {
-            if (scaleValues[i] == savedScale) scaleSel = i;
-        }
-        scaleSpinner.setSelection(scaleSel);
-        scaleCol.addView(scaleSpinner);
-        optRow.addView(scaleCol);
-
-        LinearLayout opCol = new LinearLayout(context);
-        opCol.setOrientation(LinearLayout.VERTICAL);
-        opCol.setLayoutParams(lpCol);
-
-        TextView opLabel = new TextView(context);
-        opLabel.setText("TRANSPARENCY:");
-        opLabel.setTextSize(12);
-        opLabel.setTextColor(Color.rgb(135, 163, 181));
-        opCol.addView(opLabel);
-
-        Spinner opSpinner = new Spinner(context);
-        String[] opOptions = {"100% (Solid)", "85% (Mild)", "70% (Translucent)", "50% (Minimal)"};
-        Integer[] opValues = {100, 85, 70, 50};
-        ArrayAdapter<String> opAdapter = new ArrayAdapter<>(context, android.R.layout.simple_spinner_dropdown_item, opOptions);
-        opSpinner.setAdapter(opAdapter);
-        int opSel = 0;
-        for (int i = 0; i < opValues.length; i++) {
-            if (opValues[i] == savedOpacity) opSel = i;
-        }
-        opSpinner.setSelection(opSel);
-        opCol.addView(opSpinner);
-        optRow.addView(opCol);
-
-        root.addView(optRow);
-
-        // --- START COLLAPSED ---
-        CheckBox collapsedCheck = new CheckBox(context);
-        collapsedCheck.setText("Start panel collapsed (tap arrow to expand)");
-        collapsedCheck.setChecked(savedCollapsed);
-        collapsedCheck.setTextColor(Color.rgb(220, 230, 237));
-        root.addView(collapsedCheck);
-
-        ScrollView scroll = new ScrollView(context);
-        scroll.addView(root);
-
-        new AlertDialog.Builder(context)
-                .setTitle("🎮   Touch Control Settings")
-                .setView(scroll)
-                .setPositiveButton("Save", (dialog, which) -> {
-                    savePreferences(p, currentLayout, scaleValues[scaleSpinner.getSelectedItemPosition()],
-                            opValues[opSpinner.getSelectedItemPosition()], collapsedCheck.isChecked(),
-                            dockSpinner.getSelectedItemPosition());
-                })
-                .setNeutralButton("Hotkey Guide", (dialog, which) -> guide(context))
-                .setNegativeButton("Cancel", null)
-                .show();
+        root.addView(button(context,"Edit positions in landscape",()->showEditor(context,layout,null,sizeValues[scale.getSelectedItemPosition()],()->refresh[0].run())));
+        root.addView(button(context,"Commands and Yuri controls guide",()->guide(context)));root.addView(rows);refresh[0].run();ScrollView scroll=new ScrollView(context);scroll.addView(root);
+        new AlertDialog.Builder(context).setTitle("Touch controls").setView(scroll)
+            .setPositiveButton("Save",(d,which)->prefs.edit().putInt("touch_layout_version",TouchLayout.VERSION).putInt("touch_actions",TouchLayout.mask(layout))
+                .putString("touch_mapping",TouchLayout.mapping(layout)).putString("touch_positions",TouchLayout.positions(layout))
+                .putBoolean("touch_free_layout",free.isChecked()).putInt("touch_scale",sizeValues[scale.getSelectedItemPosition()]).putInt("touch_opacity",opValues[opacity.getSelectedItemPosition()])
+                .putInt("touch_dock",dock.getSelectedItemPosition()).putBoolean("touch_collapsed",collapsed.isChecked()).apply())
+            .setNegativeButton("Cancel",null).show();
     }
-
-    private static void applyLayoutPreset(List<ActionItem> layout, int presetIndex) {
-        List<String> activeIds = new ArrayList<>();
-        Map<String, float[]> customPos = new HashMap<>();
-
-        if (presetIndex == 0) { // Classic Command Dock
-            activeIds = Arrays.asList("STOP", "GUARD", "DEPLOY", "SCATTER", "FIRE", "MOVE", "ADD");
-            for (ActionItem a : layout) { a.xPct = -1f; a.yPct = -1f; }
-        } else if (presetIndex == 1) { // Left-Side Margin Optimized
-            activeIds = Arrays.asList("STOP", "GUARD", "DEPLOY", "SCATTER", "FIRE", "MOVE", "ADD");
-            customPos.put("STOP", new float[]{2f, 30f});
-            customPos.put("GUARD", new float[]{2f, 42f});
-            customPos.put("DEPLOY", new float[]{2f, 54f});
-            customPos.put("SCATTER", new float[]{2f, 66f});
-            customPos.put("FIRE", new float[]{2f, 78f});
-            customPos.put("MOVE", new float[]{2f, 90f});
-            customPos.put("ADD", new float[]{2f, 18f});
-        } else if (presetIndex == 2) { // Thumb Comfort
-            activeIds = Arrays.asList("STOP", "GUARD", "DEPLOY", "SCATTER", "FIRE", "MOVE", "ADD");
-            customPos.put("STOP", new float[]{5f, 75f});
-            customPos.put("GUARD", new float[]{16f, 75f});
-            customPos.put("DEPLOY", new float[]{27f, 75f});
-            customPos.put("SCATTER", new float[]{5f, 88f});
-            customPos.put("FIRE", new float[]{78f, 88f});
-            customPos.put("MOVE", new float[]{89f, 88f});
-            customPos.put("ADD", new float[]{78f, 75f});
-        } else if (presetIndex == 3) { // Tactical Commander (Extended)
-            activeIds = Arrays.asList("STOP", "GUARD", "DEPLOY", "SCATTER", "FIRE", "MOVE", "ADD", "BOX", "ROUTE", "HOME");
-            for (ActionItem a : layout) { a.xPct = -1f; a.yPct = -1f; }
-        }
-
-        for (ActionItem item : layout) {
-            item.active = activeIds.contains(item.id);
-            float[] coords = customPos.get(item.id);
-            if (coords != null) {
-                item.xPct = coords[0];
-                item.yPct = coords[1];
-            } else if (presetIndex != 2) {
-                item.xPct = -1f;
-                item.yPct = -1f;
-            }
-        }
+    private static void showEditor(Context c,List<TouchLayout.Item> original,String selected,int globalSize,Runnable changed) {
+        List<TouchLayout.Item> draft=TouchLayout.copy(original);TouchLayout.ensurePositions(draft);
+        if(selected!=null)for(TouchLayout.Item item:draft)if(item.id.equals(selected))item.visible=true;
+        Dialog dialog=new Dialog(c,android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        dialog.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        FrameLayout root=new FrameLayout(c);root.setBackgroundColor(Color.rgb(14,23,25));
+        TextView status=label(c,"Drag any button anywhere. Select it, then Size to resize. Tools hides this toolbar.");
+        DragCanvas canvas=new DragCanvas(c,draft,status,selected,globalSize);root.addView(canvas,new FrameLayout.LayoutParams(-1,-1));
+        FrameLayout.LayoutParams help=new FrameLayout.LayoutParams(-1,-2,android.view.Gravity.TOP);help.rightMargin=dp(c,70);root.addView(status,help);
+        LinearLayout controls=row(c);controls.setBackgroundColor(0xcc142523);
+        weighted(controls,button(c,"Hide",canvas::hideSelected));
+        weighted(controls,button(c,"Restore",()->{
+            String[] labels=new String[draft.size()];boolean[] checks=new boolean[draft.size()];for(int i=0;i<draft.size();i++){labels[i]=draft.get(i).label;checks[i]=draft.get(i).visible;}
+            new AlertDialog.Builder(c).setTitle("Show / hide controls").setMultiChoiceItems(labels,checks,(d,i,on)->{draft.get(i).visible=on;canvas.invalidate();}).setPositiveButton("Done",null).show();
+        }));
+        weighted(controls,button(c,"Size",canvas::resizeSelected));
+        weighted(controls,button(c,"Reset",()->{TouchLayout.preset(draft,3);canvas.invalidate();}));
+        weighted(controls,button(c,"Use layout",()->{original.clear();original.addAll(TouchLayout.copy(draft));changed.run();dialog.dismiss();}));
+        weighted(controls,button(c,"Cancel",dialog::dismiss));
+        root.addView(controls,new FrameLayout.LayoutParams(-1,-2,android.view.Gravity.BOTTOM));
+        Button tools=button(c,"Tools",()->{int visibility=controls.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE;controls.setVisibility(visibility);status.setVisibility(visibility);});
+        root.addView(tools,new FrameLayout.LayoutParams(dp(c,70),dp(c,44),android.view.Gravity.TOP|android.view.Gravity.RIGHT));
+        dialog.setContentView(root);dialog.show();dialog.getWindow().setLayout(-1,-1);
+        dialog.getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY|View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN|View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
     }
-
-    private static void savePreferences(SharedPreferences p, List<ActionItem> layout, int scale, int opacity, boolean collapsed, int dockSide) {
-        int maskVal = 0;
-        StringBuilder mappingSb = new StringBuilder();
-        StringBuilder posSb = new StringBuilder();
-
-        for (ActionItem item : layout) {
-            if (item.active) {
-                if (item.maskBit >= 0) maskVal |= (1 << item.maskBit);
-                if (mappingSb.length() > 0) mappingSb.append(",");
-                mappingSb.append(item.id);
-
-                if (item.xPct >= 0 && item.yPct >= 0) {
-                    if (posSb.length() > 0) posSb.append(";");
-                    posSb.append(String.format(Locale.US, "%s:%.1f,%.1f", item.id, item.xPct, item.yPct));
-                }
+    private static final class DragCanvas extends View {
+        final List<TouchLayout.Item> items;final TextView status;final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);final int globalSize;
+        final List<TouchLayout.Item> drawn=new ArrayList<>();final List<RectF> rects=new ArrayList<>();
+        TouchLayout.Item selected,dragged;float offsetX,offsetY,dragW,dragH;
+        DragCanvas(Context c,List<TouchLayout.Item> items,TextView status,String id,int globalSize) {
+            super(c);this.items=items;this.status=status;this.globalSize=globalSize;setContentDescription("Full screen touch layout editor");setFocusable(true);
+            for(TouchLayout.Item item:items)if(item.id.equals(id))selected=item;
+        }
+        void hideSelected(){if(selected!=null){selected.visible=false;status.setText(selected.label+" hidden. Restore keeps its position and size.");invalidate();}}
+        void resizeSelected(){if(selected!=null){selected.size=selected.size>=160?40:selected.size+20;status.setText(selected.label+" size: "+selected.size+"%");invalidate();}}
+        public boolean performClick(){super.performClick();return true;}
+        protected void onDraw(Canvas c) {
+            super.onDraw(c);paint.setColor(Color.rgb(23,43,38));c.drawRect(0,0,getWidth(),getHeight(),paint);paint.setColor(Color.rgb(40,65,56));
+            for(float x=0;x<getWidth();x+=dp(getContext(),32))c.drawLine(x,0,x,getHeight(),paint);
+            for(float y=0;y<getHeight();y+=dp(getContext(),32))c.drawLine(0,y,getWidth(),y,paint);
+            drawn.clear();rects.clear();
+            for(TouchLayout.Item item:items) {
+                if(!item.visible)continue;
+                int[] b=TouchLayout.bounds(item,getWidth(),getHeight(),getResources().getDisplayMetrics().density,globalSize);
+                RectF r=new RectF(b[0],b[1],b[0]+b[2],b[1]+b[3]);drawn.add(item);rects.add(r);
+                paint.setStyle(Paint.Style.FILL);paint.setColor(item==selected?Color.rgb(70,110,95):Color.rgb(34,61,59));c.drawRoundRect(r,6,6,paint);
+                paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(getContext(),1));paint.setColor(Color.rgb(130,218,175));c.drawRoundRect(r,6,6,paint);
+                paint.setStyle(Paint.Style.FILL);paint.setColor(Color.WHITE);paint.setTextAlign(Paint.Align.CENTER);paint.setTextSize(Math.min(r.height()/3,r.width()/Math.max(5,item.id.length())*1.5f));
+                c.drawText(item.id,r.centerX(),r.centerY()-(paint.ascent()+paint.descent())/2,paint);
             }
         }
-
-        p.edit()
-                .putInt("touch_actions", maskVal)
-                .putString("touch_mapping", mappingSb.toString())
-                .putString("touch_positions", posSb.toString())
-                .putInt("touch_scale", scale)
-                .putInt("touch_opacity", opacity)
-                .putBoolean("touch_collapsed", collapsed)
-                .putInt("touch_dock", dockSide)
-                .apply();
-    }
-
-    private static void showFullscreenMapper(Context context, List<ActionItem> layout, SharedPreferences prefs) {
-        final Dialog dialog = new Dialog(context, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        }
-
-        float density = context.getResources().getDisplayMetrics().density;
-        FrameLayout root = new FrameLayout(context);
-        root.setBackgroundColor(Color.rgb(14, 20, 22));
-
-        TextView topHeader = new TextView(context);
-        topHeader.setText("🖥️   FULLSCREEN TOUCH POSITION EDITOR — Drag buttons anywhere on screen");
-        topHeader.setTextSize(13);
-        topHeader.setTextColor(Color.rgb(224, 191, 115));
-        topHeader.setPadding(dp16(density), dp12(density), dp16(density), dp12(density));
-        topHeader.setBackgroundColor(Color.argb(200, 20, 30, 35));
-
-        FrameLayout.LayoutParams headerLp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP);
-        root.addView(topHeader, headerLp);
-
-        final FullscreenDragCanvas canvasView = new FullscreenDragCanvas(context, layout);
-        root.addView(canvasView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        LinearLayout btmBar = new LinearLayout(context);
-        btmBar.setOrientation(LinearLayout.HORIZONTAL);
-        btmBar.setPadding(dp16(density), dp8(density), dp16(density), dp16(density));
-        btmBar.setBackgroundColor(Color.argb(220, 18, 24, 28));
-
-        Button resetBtn = new Button(context);
-        resetBtn.setText("Reset to Default Dock");
-        resetBtn.setOnClickListener(v -> {
-            for (ActionItem item : layout) { item.xPct = -1f; item.yPct = -1f; }
-            canvasView.invalidate();
-        });
-
-        Button closeBtn = new Button(context);
-        closeBtn.setText("Save & Close");
-        closeBtn.setOnClickListener(v -> {
-            savePreferences(prefs, layout, prefs.getInt("touch_scale", 100), prefs.getInt("touch_opacity", 100),
-                    prefs.getBoolean("touch_collapsed", true), prefs.getInt("touch_dock", 0));
-            dialog.dismiss();
-        });
-
-        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        btnLp.setMargins(4, 0, 4, 0);
-        btmBar.addView(resetBtn, btnLp);
-        btmBar.addView(closeBtn, btnLp);
-
-        FrameLayout.LayoutParams btmLp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
-        root.addView(btmBar, btmLp);
-
-        dialog.setContentView(root);
-        dialog.show();
-    }
-
-    private static int dp8(float density) { return Math.round(8 * density); }
-    private static int dp12(float density) { return Math.round(12 * density); }
-    private static int dp16(float density) { return Math.round(16 * density); }
-
-    private static List<ActionItem> parseLayout(String savedMapping, String savedPositions, int mask) {
-        List<ActionItem> list = new ArrayList<>();
-        Map<String, float[]> posMap = new HashMap<>();
-
-        if (savedPositions != null && !savedPositions.isEmpty()) {
-            for (String p : savedPositions.split(";")) {
-                String[] parts = p.split(":");
-                if (parts.length == 2) {
-                    String[] coords = parts[1].split(",");
-                    if (coords.length == 2) {
-                        try {
-                            float x = Float.parseFloat(coords[0]);
-                            float y = Float.parseFloat(coords[1]);
-                            posMap.put(parts[0], new float[]{x, y});
-                        } catch (Exception ignored) { }
-                    }
-                }
-            }
-        }
-
-        if (savedMapping != null && !savedMapping.isEmpty()) {
-            String[] tokens = savedMapping.split(",");
-            for (String t : tokens) {
-                for (ActionItem a : ALL_ACTIONS) {
-                    if (a.id.equals(t)) {
-                        ActionItem item = new ActionItem(a.id, a.label, a.defaultHotkey, a.maskBit, true);
-                        float[] coords = posMap.get(a.id);
-                        if (coords != null) {
-                            item.xPct = coords[0];
-                            item.yPct = coords[1];
-                        }
-                        list.add(item);
-                        break;
-                    }
-                }
-            }
-            for (ActionItem a : ALL_ACTIONS) {
-                boolean found = false;
-                for (ActionItem existing : list) {
-                    if (existing.id.equals(a.id)) { found = true; break; }
-                }
-                if (!found) {
-                    ActionItem item = new ActionItem(a.id, a.label, a.defaultHotkey, a.maskBit, false);
-                    float[] coords = posMap.get(a.id);
-                    if (coords != null) {
-                        item.xPct = coords[0];
-                        item.yPct = coords[1];
-                    }
-                    list.add(item);
-                }
-            }
-        } else {
-            for (ActionItem a : ALL_ACTIONS) {
-                boolean active = a.maskBit >= 0 && (mask & (1 << a.maskBit)) != 0;
-                ActionItem item = new ActionItem(a.id, a.label, a.defaultHotkey, a.maskBit, active);
-                float[] coords = posMap.get(a.id);
-                if (coords != null) {
-                    item.xPct = coords[0];
-                    item.yPct = coords[1];
-                }
-                list.add(item);
-            }
-        }
-        return list;
-    }
-
-    /** Fullscreen canvas supporting free drag and drop placement of virtual buttons anywhere. */
-    private static class FullscreenDragCanvas extends View {
-        private final List<ActionItem> layout;
-        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private int draggedIndex = -1;
-        private final List<RectF> btnRects = new ArrayList<>();
-        private final List<ActionItem> activeBtns = new ArrayList<>();
-
-        FullscreenDragCanvas(Context context, List<ActionItem> layout) {
-            super(context);
-            this.layout = layout;
-            setWillNotDraw(false);
-        }
-
-        @Override
-        public boolean performClick() { return super.performClick(); }
-
-        @Override
         public boolean onTouchEvent(MotionEvent event) {
-            float x = event.getX();
-            float y = event.getY();
-            int w = getWidth();
-            int h = getHeight();
-
-            switch (event.getAction()) {
+            float x=event.getX(),y=event.getY();
+            switch(event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
-                    draggedIndex = -1;
-                    for (int i = 0; i < btnRects.size(); i++) {
-                        if (btnRects.get(i).contains(x, y)) {
-                            draggedIndex = i;
-                            break;
-                        }
-                    }
-                    break;
+                    dragged=null;for(int i=rects.size()-1;i>=0;i--)if(rects.get(i).contains(x,y)) {
+                        selected=dragged=drawn.get(i);RectF r=rects.get(i);offsetX=x-r.left;offsetY=y-r.top;dragW=r.width();dragH=r.height();status.setText(selected.label+" - drag anywhere; Size changes this button");break;
+                    }getParent().requestDisallowInterceptTouchEvent(true);invalidate();return true;
                 case MotionEvent.ACTION_MOVE:
-                    if (draggedIndex >= 0 && draggedIndex < activeBtns.size() && w > 0 && h > 0) {
-                        ActionItem item = activeBtns.get(draggedIndex);
-                        item.xPct = Math.max(0f, Math.min(100f, (x / (float) w) * 100f));
-                        item.yPct = Math.max(5f, Math.min(95f, (y / (float) h) * 100f));
-                        invalidate();
-                    }
-                    break;
-                case MotionEvent.ACTION_UP:
-                    if (draggedIndex >= 0) {
-                        performClick();
-                        draggedIndex = -1;
-                        invalidate();
-                    }
-                    break;
-            }
-            return true;
-        }
-
-        @Override
-        protected void onDraw(Canvas canvas) {
-            super.onDraw(canvas);
-            int w = getWidth();
-            int h = getHeight();
-
-            btnRects.clear();
-            activeBtns.clear();
-
-            // Background battlefield preview
-            paint.setColor(Color.rgb(18, 28, 26));
-            canvas.drawRect(0, 0, w, h, paint);
-
-            paint.setColor(Color.rgb(28, 44, 40));
-            paint.setStrokeWidth(2f);
-            for (int gx = 0; gx < w; gx += 60) canvas.drawLine(gx, 0, gx, h, paint);
-            for (int gy = 0; gy < h; gy += 60) canvas.drawLine(0, gy, w, gy, paint);
-
-            float btnW = 90;
-            float btnH = 55;
-
-            for (ActionItem item : layout) {
-                if (!item.active) continue;
-                activeBtns.add(item);
-
-                float bx, by;
-                if (item.xPct >= 0 && item.yPct >= 0) {
-                    bx = (item.xPct / 100f) * (w - btnW);
-                    by = (item.yPct / 100f) * (h - btnH);
-                } else {
-                    int idx = activeBtns.size() - 1;
-                    int cols = 4;
-                    bx = 20 + (idx % cols) * (btnW + 12);
-                    by = h - 190 + ((float)idx / cols) * (btnH + 12);
-                }
-
-                RectF r = new RectF(bx, by, bx + btnW, by + btnH);
-                btnRects.add(r);
-
-                paint.setColor(Color.rgb(45, 68, 62));
-                canvas.drawRoundRect(r, 6, 6, paint);
-
-                paint.setColor(Color.rgb(80, 190, 160));
-                paint.setStyle(Paint.Style.STROKE);
-                paint.setStrokeWidth(2.5f);
-                canvas.drawRoundRect(r, 6, 6, paint);
-                paint.setStyle(Paint.Style.FILL);
-
-                paint.setColor(Color.rgb(240, 248, 245));
-                paint.setTextSize(14f);
-                paint.setTextAlign(Paint.Align.CENTER);
-                canvas.drawText(item.id, bx + btnW / 2, by + btnH / 2 + 5, paint);
+                    if(dragged!=null){dragged.x=percent(x-offsetX,getWidth()-dragW);dragged.y=percent(y-offsetY,getHeight()-dragH);invalidate();}return true;
+                case MotionEvent.ACTION_UP:dragged=null;performClick();return true;
+                case MotionEvent.ACTION_CANCEL:dragged=null;return true;
+                default:return true;
             }
         }
+        private float percent(float value,float range){return range<=0?0:Math.max(0,Math.min(100,value/range*100));}
     }
-
-    private static void guide(Context context) {
-        new AlertDialog.Builder(context).setTitle("Commands & Gestures Guide")
-                .setMessage("Changes apply on your next game launch. MORE and control groups remain available.\n\n" +
-                        "MORE → ROUTE Z: enter waypoint mode, tap route points, then tap ROUTE Z again to start. X on the mode banner cancels the uncommitted route. Only movement routes are supported.\n\n" +
-                        "Stop (S) clears a committed route. A new normal order replaces it.\n\n" +
-                        "D: Deploy, pack or unload the selected unit.\nG: Guard. X: Scatter.\n" +
-                        "Ctrl: Force Fire. Ctrl + Shift: Attack Move.\n" +
-                        "Double tap: select matching units on screen.\nPinch: zoom. Two-finger tap: cancel.\n" +
-                        "Tap group: select. Hold group: assign.\n\n" +
-                        "Keyboard bindings can be changed in the game's Keyboard options; the labels above show defaults.")
-                .setPositiveButton("OK", null).show();
+    private static void guide(Context c) {
+        new AlertDialog.Builder(c).setTitle("Commands and Yuri controls").setMessage(
+            "Save in Touch controls, then launch the game. Hidden controls keep their positions. Cancel discards edits.\n\n"+
+            "Drag pans the map; hold then drag selects a box. Pinch zooms; two-finger tap cancels. Tap a group to select; hold to assign. MORE opens secondary commands.\n\n"+
+            "Psi Wave deploys eligible selected psychic infantry. Slave Miner deploy / pack acts on selected miners only.\n"+
+            "Psychic Reveal, Dominator and Genetic Mutator become available when their power is ready. Tap the shortcut, then a target on the battlefield.\n"+
+            "Mind control, Magnetron and Disc drain use normal target taps with the appropriate unit selected.\n\n"+
+            "Force Fire and Attack Move arm the next target tap. Deploy / unload also works for other factions.").setPositiveButton("OK",null).show();
     }
 }

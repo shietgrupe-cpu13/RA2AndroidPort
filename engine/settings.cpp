@@ -194,6 +194,9 @@ bool Settings::operator==(const Settings& o) const {
            unit_action_lines == o.unit_action_lines && show_hidden == o.show_hidden &&
            tooltips == o.tooltips && screen_width == o.screen_width &&
            screen_height == o.screen_height && stretch_movies == o.stretch_movies &&
+           sidebar_scale == o.sidebar_scale && sidebar_cells == o.sidebar_cells &&
+           display_override == o.display_override && widescreen == o.widescreen &&
+           hud_text_size == o.hud_text_size &&
            allow_hires_modes == o.allow_hires_modes &&
            allow_vram_sidebar == o.allow_vram_sidebar && sound_volume == o.sound_volume &&
            voice_volume == o.voice_volume && score_volume == o.score_volume &&
@@ -249,6 +252,12 @@ Settings load_settings(const IniDoc& d) {
     s.screen_width = rd_int(d, kVid, "ScreenWidth", s.screen_width);
     s.screen_height = rd_int(d, kVid, "ScreenHeight", s.screen_height);
     s.stretch_movies = rd_bool(d, kVid, "StretchMovies", s.stretch_movies);
+    s.display_override = rd_bool(d, kVid, "DisplayOverride", s.display_override);
+    s.widescreen = rd_bool(d, kVid, "Widescreen", s.widescreen);
+    s.hud_text_size = std::clamp(rd_int(d, kVid, "HUDTextSize", s.hud_text_size), 100, 160);
+    s.sidebar_scale = std::clamp(rd_int(d,kVid,"SidebarScale",100),60,125);
+    const int cells=rd_int(d,kVid,"SidebarCells",0);
+    s.sidebar_cells=cells<=0 ? 0 : std::clamp(cells/2*2,6,60);
     s.allow_hires_modes = rd_bool(d, kVid, "AllowHiResModes", s.allow_hires_modes);
     s.allow_vram_sidebar = rd_bool(d, kVid, "AllowVRAMSidebar", s.allow_vram_sidebar);
     s.sound_volume = rd_vol(d, kAud, "SoundVolume", s.sound_volume);
@@ -277,6 +286,17 @@ void store_settings(const Settings& s, IniDoc& d) {
     d.set(kVid, "ScreenWidth", ww_format_int(s.screen_width));
     d.set(kVid, "ScreenHeight", ww_format_int(s.screen_height));
     d.set(kVid, "StretchMovies", ww_format_bool(s.stretch_movies));
+    // Keep legacy files byte-identical until the new controls are used.
+    if (s.display_override || d.get(kVid, "DisplayOverride"))
+        d.set(kVid, "DisplayOverride", ww_format_bool(s.display_override));
+    if(s.sidebar_scale!=100 || d.get(kVid,"SidebarScale"))
+        d.set(kVid,"SidebarScale",ww_format_int(s.sidebar_scale));
+    if(s.sidebar_cells!=0 || d.get(kVid,"SidebarCells"))
+        d.set(kVid,"SidebarCells",ww_format_int(s.sidebar_cells));
+    if (!s.widescreen || d.get(kVid, "Widescreen"))
+        d.set(kVid, "Widescreen", ww_format_bool(s.widescreen));
+    if (s.hud_text_size != 100 || d.get(kVid, "HUDTextSize"))
+        d.set(kVid, "HUDTextSize", ww_format_int(std::clamp(s.hud_text_size, 100, 160)));
     d.set(kAud, "SoundVolume", ww_format_double(s.sound_volume));
     d.set(kAud, "VoiceVolume", ww_format_double(s.voice_volume));
     d.set(kAud, "ScoreVolume", ww_format_double(s.score_volume));

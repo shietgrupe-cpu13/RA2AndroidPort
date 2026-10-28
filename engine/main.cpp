@@ -245,7 +245,7 @@ extern double g_pip_yellow, g_pip_red;
 // -1 = none) -- render_world draws its pip row without the board.
 int g_hover_unit = -1;
 void draw_unit_pips(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2engine::Unit& u, int x, int y,
-                    double yellow, double red, bool board = true);
+                    double yellow, double red, bool board = true, bool health = true);
 // W7-12-04/05/16/17/18/22/45 (hud_pips.inc): the DrawPips rows / marks.
 void draw_unit_overlays(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2engine::World& world,
                         const std::vector<ra2engine::Unit>& us, const ra2engine::Unit& u, int x, int y, int group,
@@ -563,12 +563,8 @@ OreArt load_ore_art(const ra2assets::MixFile& ra2) {
     // note). Guarded: if absent, draw_ore falls back to the terrain palette
     // (wrong colors, but still renders rather than crashing).
     try {
-        MixFile cache = ra2.open_nested("cache.mix");
-        if (const MixEntry* pe = cache.find(std::string(art_chain().theater_pal))) {
-            auto raw = cache.read(*pe);
-            oa.pal = Palette::load(raw.data(), raw.size());
-            oa.has_pal = true;
-        }
+        oa.pal = asset_required_palette(art_chain().theater_pal);
+        oa.has_pal = true;
     } catch (const std::exception&) { oa.has_pal = false; }
     oa.any = ok > 0;
     std::cerr << "[ore] art files loaded=" << ok << " pal=" << (oa.has_pal ? art_chain().theater_pal : "FALLBACK")
@@ -649,6 +645,7 @@ std::mutex g_vxl_mu;
 // W3-B: harvester image -> its UnloadingClass assets (GameScene fills it).
 std::map<std::string, std::shared_ptr<const VehicleAssets>> g_unloading_class;
 std::mutex g_unloading_class_mu;
+std::map<int,long> g_deploy_anim_until;
 int g_draw_unit_idx = -1;   // the unit render_world is drawing (walk stage lookup)
 
 // All SHP + palette assets for one building type, resolved through the
@@ -1815,11 +1812,7 @@ UnitAssets load_unit_assets(const std::string& dir, const ra2assets::MixFile& ra
     ua.shps.emplace(gi.combat.image, load_unit_shp(conquer, gi.combat.image));
     ua.shps.emplace(cons.combat.image, load_unit_shp(conquer, cons.combat.image));
 
-    MixFile cache = ra2.open_nested("cache.mix");
-    const MixEntry* pe = cache.find(std::string(art_chain().unit_pal));   // G-86
-    if (!pe) throw std::runtime_error("unit palette not found in ra2.mix/cache.mix");
-    auto pal_raw = cache.read(*pe);
-    ua.pal = Palette::load(pal_raw.data(), pal_raw.size());
+    ua.pal = asset_required_palette(art_chain().unit_pal);
 
     // artmd.ini: resolve both images' animation sequences. The Ini/Art locals
     // stay alive only for this scope (Art wraps its Ini by reference -- see
@@ -1869,7 +1862,7 @@ void spawn_squad(ra2engine::World& world, int origin_x, int origin_y, int count,
 // non-turreted vehicle (Rules::has_turret gates the attempt).
 VehicleAssets load_vehicle_assets(const std::string& dir, const ra2assets::MixFile& ra2,
                                   const ra2assets::Palette& unit_pal, const std::string& unit_id,
-                                  const Rules* scenario_rules=nullptr) {
+                                  const Rules* scenario_rules=nullptr, const std::string& image_override="") {
     load_progress("VEHICLE VOXELS");   // W2-AR-02 loading-screen checkpoint
     VehicleAssets va;
     try {
@@ -1881,6 +1874,7 @@ VehicleAssets load_vehicle_assets(const std::string& dir, const ra2assets::MixFi
 
         const ResolvedUnit ru = resolve_combat_unit(rules, unit_id);
         va.combat = ru.combat;
+        if(!image_override.empty())va.combat.image=image_override;
         va.combat.is_vehicle = true;
         va.combat.rot = rules.rot(unit_id);
         va.combat.turret = rules.has_turret(unit_id);
@@ -2772,17 +2766,10 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
     ba.repair_sell.third_survivor_divisor =
         static_cast<int>(rules.general_double("ThirdSurvivorDivisor", 750.0));
 
-    // Palettes (both verified present in cache.mix): buildings draw with
+    // Resolve palettes through the global archive search: buildings draw with
     // unittem.pal (+ house remap), cameos with cameo.pal [RE: building-render.md §6].
-    MixFile cache = ra2.open_nested("cache.mix");
-    auto load_pal = [&](const char* name) -> Palette {
-        const MixEntry* pe = cache.find(std::string(name));
-        if (!pe) throw std::runtime_error(std::string(name) + " not found in ra2.mix/cache.mix");
-        auto raw = cache.read(*pe);
-        return Palette::load(raw.data(), raw.size());
-    };
-    ba.unit_pal = load_pal(art_chain().unit_pal);   // G-86 theater unit palette
-    ba.cameo_pal = load_pal("cameo.pal");
+    ba.unit_pal = asset_required_palette(art_chain().unit_pal);
+    ba.cameo_pal = asset_required_palette("cameo.pal");
     // Sidebar chrome palette (W2-UI-01): every sidec0N.mix chrome SHP draws
     // under THAT mix's own sidebar.pal [RE: wave2/04 #1 -- cache.mix has no
     // sidebar.pal; game.exe 0x7F8AF8 "SIDEBAR.PAL"]. Loaded with the chrome
@@ -3160,10 +3147,9 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
         const MixEntry* ee = conquer.find(std::string("twlt070.shp"));
         if (ee) {
             ba.explosion = std::make_unique<ShpFile>(ShpFile::load(conquer.read(*ee)));
-            if (const MixEntry* ape = cache.find(std::string("anim.pal"))) {
-                auto apal = cache.read(*ape);
+            std::vector<uint8_t> apal;
+            if (asset_read("anim.pal", apal))
                 ba.explosion_pal = Palette::load(apal.data(), apal.size());
-            }
         }
     } catch (const std::exception&) { ba.explosion.reset(); }
 
@@ -3891,15 +3877,7 @@ int pres_turret_index(const ra2engine::Unit& u, const VehicleAssets& va) {
         const std::string ct = pres_lower(pres_clean(g_walk_rules->get(id, "IsChargeTurret")));
         t.charge = !ct.empty() && (ct[0] == 'y' || ct[0] == 't' || ct[0] == '1');
         t.count = std::max(1, std::atoi(pres_clean(g_walk_rules->get(id, "TurretCount")).c_str()));
-        for (const auto& kv : g_walk_rules->section(id)) {
-            const std::string k = kv.first;
-            const std::string suf = "TurretWeapon";
-            if (k.size() > suf.size() && k.compare(k.size() - suf.size(), suf.size(), suf) == 0) {
-                const std::string mode = k.substr(0, k.size() - suf.size());
-                const std::string ix = pres_clean(g_walk_rules->get(id, mode + "TurretIndex"));
-                if (!ix.empty()) t.by_weapon[std::atoi(pres_clean(kv.second).c_str())] = std::atoi(ix.c_str());
-            }
-        }
+        t.by_weapon=ra2engine::ifv_turret_mapping(*g_walk_rules,id);
         it = cache.emplace(id, t).first;
     }
     const TI& t = it->second;
@@ -4721,6 +4699,7 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
         if (u.house != g_local_house && !world.object_visible_at(g_local_house, u.cell_x, u.cell_y)) return;
         // W2-AN-13: a submerged enemy sub without our sonar contact is unseen.
         if (world.unit_hidden_from(g_local_house, u)) return;
+        if(u.alive && u.deployed && g_deploy_anim_until.count(idx) && g_pres_tick<g_deploy_anim_until.at(idx))return;
         if (u.ia.vanish) return;   // W3-B: a death anim replaced the body
         if (u.die_time >= 0.0 && pres_crushed(idx)) return;   // W7-04-25: crushed -> removed at once
         // W5-PRES R-047 [RE: abilities-w5.md §9]: an enemy viewer sees a still
@@ -4769,7 +4748,8 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
             g_draw_unit_idx = idx;   // W3-B: walk stage (HVA frame)
             // W3-B [RE: FUN_0073c1cc, Harvester=yes + unloading -> UnloadingClass]:
             // a harvester dumping at the refinery draws its UnloadingClass.
-            if (u.is_harvester && u.harv == ra2engine::HarvState::Unloading) {
+            if ((u.is_harvester && u.harv == ra2engine::HarvState::Unloading) ||
+                (u.is_aircraft && u.deploy_fire && u.deployed && u.altitude<=0.0)) {
                 {
                     std::lock_guard<std::mutex> lock(g_unloading_class_mu);
                     auto ul = g_unloading_class.find(draw_image);
@@ -4867,7 +4847,7 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
             if (!(g_map_dressing && pres_airborne(us[i]))) {
                 const auto xy=g_unit_motion.position(i,us[i],g_pres_render_fraction);
                 B.push_back({ra2engine::deck_unit_depth(xy[0],xy[1],us[i].cell_x,us[i].cell_y,
-                    pres_on_high_deck(world,us[i])),1,i});
+                    pres_on_high_deck(world,us[i]), g_map_dressing ? g_map_dressing->deck_depth(us[i].cell_x,us[i].cell_y) : -1.0),1,i});
             }
         for (auto it = g_slave_miner_pack_fx.begin(); it != g_slave_miner_pack_fx.end();) {
             const SlaveMinerPackFx& fx = it->second;
@@ -4909,7 +4889,7 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
             ra2engine::set_obj_tint(nullptr);
             const int bhp_m = client_bldg_hp_mode();
             const bool bldg_hp = bhp_m == 2 ? true : (bhp_m == 1 ? (b.being_repaired || b.hp < b.max_hp) : false);
-            if (bldg_hp && b.hp > 0 && b.state == ra2engine::Building::State::Idle) {
+            if (!g_pips && bldg_hp && b.hp > 0 && b.state == ra2engine::Building::State::Idle) {
                 ra2engine::draw_building_hp_bar(ren, b, cam, W, H);
             }
             const bool tank_bunker = b.alive && b.state == ra2engine::Building::State::Idle &&
@@ -5068,7 +5048,8 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
         if (input && g_pips) {   // W2-UI-11: PIPBRD + PIPS on the selected units only
             const int idx = static_cast<int>(&u - us.data());
             const bool hovered = g_hover_unit == idx;   // W6-05-07
-            if (usel(u) || hovered) {
+            const bool show_hp=ra2engine::health_bar_visible(client_unit_hp_mode(),usel(u),u.hp<u.max_hp,hovered);
+            if (usel(u) || hovered || show_hp) {
                 const auto xy = g_unit_motion.position(idx, u, g_pres_render_fraction);
                 const auto pose = render_pose(idx, u);
                 const int up = (u.is_aircraft && pose.altitude > 0.0)
@@ -5079,10 +5060,10 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
                     ? pose.level + pres_unit_lift_levels(world, pose)
                     : g_unit_motion.ground_level(idx, u, pres_ground_level(world, u), g_pres_render_fraction);
                 const int sy = static_cast<int>(std::lround((ufx + ufy) * 15.0 - lv * 15)) + cam.y + 15 - up;
-                draw_unit_pips(ren, tc, u, sx, sy, g_pip_yellow, g_pip_red, usel(u));
+                draw_unit_pips(ren, tc, u, sx, sy, g_pip_yellow, g_pip_red, usel(u),show_hp);
                 // W7-12-04/05/16/17/18/22 [RE: DrawHealthBar 0x6F5A00 tail]: the
                 // pip rows, group number and self-heal mark, own objects only.
-                if (u.house == g_local_house) {
+                if (u.house == g_local_house && (usel(u) || hovered)) {
                     const ra2assets::Rgba hc = world.house_palette(ua.pal, u.house)[16];
                     draw_unit_overlays(ren, tc, world, us, u, sx, sy, input->group_of(idx),
                                        SDL_Color{hc.r, hc.g, hc.b, 255}, heal_inf, heal_unit, heal_inf_frames,
@@ -5741,9 +5722,9 @@ void shade_rect(SDL_Renderer* ren, const ra2engine::SbRect& r, Uint8 alpha, Uint
 // W2-AN-04/23: the sidebar rect of house 0's k-th superweapon (grant order),
 // a 2-wide grid from the radar area's top-left (the CB-4 slot is k = 0).
 ra2engine::SbRect sw_slot_rect(const ra2engine::SidebarLayout& lay, int k) {
-    return ra2engine::SbRect{lay.bar.x + ra2engine::kCameoX + (k % 2) * ra2engine::kCameoW,
-                             lay.radar.y + 2 + (k / 2) * ra2engine::kCameoH, ra2engine::kCameoW,
-                             ra2engine::kCameoH};
+    return ra2engine::SbRect{lay.bar.x + int((ra2engine::kCameoX + (k % 2) * ra2engine::kCameoW)*lay.scale),
+                             lay.radar.y + int((2 + (k / 2) * ra2engine::kCameoH)*lay.scale), int(ra2engine::kCameoW*lay.scale),
+                             int(ra2engine::kCameoH*lay.scale)};
 }
 
 void draw_sw_slot(SDL_Renderer* ren, ra2engine::TextureCache& tc, const BuildingAssets& ba,
@@ -5862,6 +5843,12 @@ void draw_sidebar(SDL_Renderer* ren, ra2engine::TextureCache& tc, const Building
                   const ra2engine::SidebarLayout& lay, const ra2engine::ProductionState& ps,
                   const ra2engine::World& world, int credits_shown, double t_now, int active_tab,
                   const UnitRoster* ur, bool unit_factory_alive, int armed_mode, bool powers_in_strip) {
+    if(lay.scale!=1.0f) {
+        float sx=1,sy=1;SDL_RenderGetScale(ren,&sx,&sy);
+        SDL_RenderSetScale(ren,sx*lay.scale,sy*lay.scale);
+        draw_sidebar(ren,tc,ba,lay.unscaled(),ps,world,credits_shown,t_now,active_tab,ur,unit_factory_alive,armed_mode,powers_in_strip);
+        SDL_RenderSetScale(ren,sx,sy);return;
+    }
     // Opaque backdrop behind any gaps (missing optional chrome), then the
     // recovered top-to-bottom stack.
     shade_rect(ren, lay.bar, 255, 24, 24, 28);
@@ -5953,7 +5940,7 @@ void draw_sidebar(SDL_Renderer* ren, ra2engine::TextureCache& tc, const Building
     const int strip_bottom = lay.strip_top + lay.side2_rows * 50;
     if (ba.has_side3)
         blit_shp(ren, tc, "sb:side3", ba.sb_side3, 0, ba.sb_pal, lay.bar.x, strip_bottom);
-    if (ba.has_addon)
+    if (ba.has_addon && !lay.compact)
         blit_shp(ren, tc, "sb:addon", ba.sb_addon, 0, ba.sb_pal, lay.bar.x,
                  strip_bottom + (ba.has_side3 ? ba.sb_side3.height() : 0));
     if (ba.has_scroll) {
@@ -6275,7 +6262,7 @@ ra2engine::World launch_skirmish(const ra2engine::SkirmishConfig& cfg,
 ra2engine::Settings* g_user_settings = nullptr;
 bool user_canvas_size(int& w,int& h) {
 #ifdef __ANDROID__
-    if (g_user_settings && g_user_settings->screen_width>=640 && g_user_settings->screen_width<=1920 &&
+    if (g_user_settings && (!g_user_settings->display_override || !g_user_settings->widescreen) && g_user_settings->screen_width>=640 && g_user_settings->screen_width<=1920 &&
         g_user_settings->screen_height>=480 && g_user_settings->screen_height<=1080) {
         w=g_user_settings->screen_width;h=g_user_settings->screen_height;return true;
     }
@@ -7149,7 +7136,7 @@ public:
           buildable_(building_buildable_tab(ba_, /*defenses=*/false)),   // active_tab_ starts at 0
           lay_(ra2engine::SidebarLayout::compute(kWinW, kWinH, buildable_)),
           sidebar_up_(ba_.ok && ba_.sidebar_ok),
-          playfield_w_(kWinW - (sidebar_up_ ? lay_.bar.w : 0)),
+          playfield_w_(lay_.battlefield_width(kWinW,sidebar_up_)),
           cam_(centered_camera(a_.map, playfield_w_, kWinH)),
           input_(world_, cam_, playfield_w_, kWinH) {
         g_bld_events.clear();
@@ -8311,7 +8298,7 @@ private:
         if (!sidebar_up_ || !ba_.has_optbtns) return false;
         const int w = ba_.sb_optbtn.width() > 0 ? ba_.sb_optbtn.width() : 70;
         const int h = ba_.sb_optbtn.height() > 0 ? ba_.sb_optbtn.height() : 16;
-        return x >= lay_.opt_btn.x && x < lay_.opt_btn.x + w && y >= lay_.opt_btn.y && y < lay_.opt_btn.y + h;
+        return ra2engine::SbRect{lay_.opt_btn.x,lay_.opt_btn.y,int(w*lay_.scale),int(h*lay_.scale)}.contains(x,y);
     }
     bool ui_handle(const ra2engine::InputEvent& ev) {
         if (gf_abort_.open()) { gf_abort_answer(gf_abort_.handle(ev)); return true; }   // gF G-14
@@ -8471,6 +8458,21 @@ private:
     void menu_apply_settings() {
         const ra2engine::Settings& st = menu_.settings();
         g_detail_level = st.detail_level;   // W5-E
+        int w=1280,h=720; game_logical_size(w,h);
+        if (w!=kWinW || h!=kWinH || ra2engine::sidebar_scale()!=st.sidebar_scale || ra2engine::sidebar_cells()!=st.sidebar_cells) {
+            ra2engine::set_sidebar_preferences(st.sidebar_scale,st.sidebar_cells);
+            const double cx=playfield_w_/(2*world_zoom_)-cam_.x;
+            const double cy=kWinH/(2*world_zoom_)-cam_.y;
+            set_canvas_size(w,h);
+            lay_=ra2engine::SidebarLayout::compute(w,h,buildable_);
+            playfield_w_=lay_.battlefield_width(w,sidebar_up_);
+            input_.set_viewport(int(playfield_w_/world_zoom_),int(h/world_zoom_));
+            cam_.x=playfield_w_/(2*world_zoom_)-cx;
+            cam_.y=h/(2*world_zoom_)-cy;
+            input_.pan(0,0);
+            g_ui_w=w; g_ui_h=h;
+            if (g_platform) g_platform->set_logical_size(w,h);
+        }
         if (cfg_.game_speed >= 0) cfg_.game_speed = st.game_speed;
         if (audio_.mixer) apply_audio_settings(*audio_.mixer, st);
     }
@@ -8497,7 +8499,17 @@ private:
     int logical_width() const override { return kWinW; }
     int logical_height() const override { return kWinH; }
 public:
-    static void set_canvas_size(int w, int h) { kWinW = w; kWinH = h; }
+    static void set_canvas_size(int w, int h) {
+        kWinW=w;kWinH=h;
+#ifdef __ANDROID__
+        ra2engine::set_sidebar_reference_height(480);
+#endif
+        if(g_user_settings)ra2engine::set_sidebar_preferences(g_user_settings->sidebar_scale,g_user_settings->sidebar_cells);
+        if(const char* d=std::getenv("RA2_TOUCH_DENSITY"))if(g_platform) {
+            int ow=0,oh=0;g_platform->output_size(ow,oh);
+            ra2engine::TouchBarLayout::canvas_density(std::atof(d),ow,oh,w,h);
+        }
+    }
 private:
 
     // --- G16 named map points for --play scripts (agent G) ---
@@ -8799,12 +8811,13 @@ private:
             if (!v || !v->ok) continue;
             const std::string img = v->combat.image;
             if (loaded.count(img)) continue;
-            std::string uc = rules_ini_.get(img, "UnloadingClass", "");
+            const std::string id=v->combat.tg.rules_id.empty() ? img : v->combat.tg.rules_id;
+            std::string uc = rules_ini_.get(id, "UnloadingClass", "");
             const std::size_t sc = uc.find(';');
             if (sc != std::string::npos) uc = uc.substr(0, sc);
             while (!uc.empty() && std::isspace(static_cast<unsigned char>(uc.back()))) uc.pop_back();
             if (uc.empty()) continue;
-            auto unload = std::make_shared<VehicleAssets>(load_vehicle_assets(dir_, ra2_, ua_.pal, uc));
+            auto unload = std::make_shared<VehicleAssets>(load_vehicle_assets(dir_, ra2_, ua_.pal, id, &rules_, uc));
             const bool ok = unload->ok;
             loaded[img] = ok ? std::move(unload) : nullptr;
             std::cerr << "[veh] " << img << " UnloadingClass=" << uc << " ok="
@@ -8886,7 +8899,7 @@ private:
         buildable_ = tab_buildable(active_tab_);
         lay_ = ra2engine::SidebarLayout::compute(kWinW, kWinH, buildable_);
         campaign_view_setup();   // W4-MC-03/04: LocalSize limits + the HomeCell view
-        const ra2engine::CampaignTables tables = camp::load_tables(ra2_);
+        const ra2engine::CampaignTables tables = camp::load_tables(ra2_, cfg.campaign_map);
         const ra2engine::MissionInfo mi = tables.mission(cfg.campaign_map);
         if (!mi.ui_name.empty()) mission_name_ = camp::csf_text(dir_, mi.ui_name);
         briefing_ = camp::csf_text(dir_, mi.briefing.empty() ? campaign_->basic().briefing : mi.briefing);
@@ -9396,7 +9409,7 @@ const MenuArt& shell_art() {
 // maps it to device space with the same ShellXform as the shell chrome.
 struct OptionsPageState {
     enum Slider { S_VISUAL, S_DIFFICULTY, S_SCROLL, S_MUSIC, S_SOUND, S_VOICE, S_COUNT };
-    enum Check  { C_TOOLTIPS, C_TARGETLINES, C_HIDDEN, C_COUNT };
+    enum Check  { C_TOOLTIPS, C_TARGETLINES, C_HIDDEN, C_OVERRIDE, C_WIDESCREEN, C_COUNT };
     struct SliderDef { ra2engine::SbRect r; int range; bool readout; };
     static const SliderDef& slider(int i) {
         static const SliderDef k[S_COUNT] = {
@@ -9414,6 +9427,8 @@ struct OptionsPageState {
             {37, 260, 195, 16},   // 0x602 Tooltips
             {37, 284, 195, 16},   // 0x601 Target Lines (UnitActionLines)
             {37, 308, 195, 16},   // 0x604 See Hidden Objects (ShowHidden)
+            {37, 100, 210, 18},
+            {255, 100, 210, 18},
         };
         return k[i];
     }
@@ -9450,6 +9465,8 @@ struct OptionsPageState {
         chk[C_TOOLTIPS]    = s.tooltips;
         chk[C_TARGETLINES] = s.unit_action_lines;
         chk[C_HIDDEN]      = s.show_hidden;
+        chk[C_OVERRIDE]    = s.display_override;
+        chk[C_WIDESCREEN]  = s.widescreen;
     }
     // FUN_00542280: every exit of the page writes the controls back.
     void commit(ra2engine::Settings& s) const {
@@ -9457,6 +9474,8 @@ struct OptionsPageState {
         s.difficulty        = pos[S_DIFFICULTY];
         s.unit_action_lines = chk[C_TARGETLINES];
         s.show_hidden       = chk[C_HIDDEN];
+        s.display_override = chk[C_OVERRIDE];
+        s.widescreen       = chk[C_WIDESCREEN];
         s.tooltips          = chk[C_TOOLTIPS];
         s.scroll_rate       = ra2engine::slider_to_scroll_rate(pos[S_SCROLL]);
         s.score_volume      = ra2engine::slider_to_volume(pos[S_MUSIC]);
@@ -9513,7 +9532,7 @@ void draw_options_page(SDL_Renderer* ren, ra2engine::TextureCache& tc, const Men
 
     // Checkboxes (skin proc 0x5F3CF0).
     static const char* kChk[OptionsPageState::C_COUNT] = {"Tooltips", "Target Lines",
-                                                          "See Hidden Objects"};
+                                                          "See Hidden Objects", "Override display", "Widescreen (full display)"};
     for (int i = 0; i < OptionsPageState::C_COUNT; ++i)
         p.checkbox(OptionsPageState::check_rect(i), st.chk[i], kChk[i], true);
 }
@@ -9591,7 +9610,7 @@ public:
                 p.targets[k] = ra2play::Rect{d.x, d.y, d.w, d.h};
             };
             put("opt:res", 255, 73, 180, 21);
-            static const char* kCk[OptionsPageState::C_COUNT] = {"tooltips", "targetlines", "hidden"};
+            static const char* kCk[OptionsPageState::C_COUNT] = {"tooltips", "targetlines", "hidden", "displayoverride", "widescreen"};
             for (int i = 0; i < OptionsPageState::C_COUNT; ++i) {
                 const ra2engine::SbRect r = OptionsPageState::check_rect(i);
                 put(std::string("opt:check:") + kCk[i], r.x, r.y, 18, r.h);
@@ -10128,6 +10147,10 @@ bool ShellScene::options_handle(const ra2engine::InputEvent& ev) {
     for (int i = 0; i < OptionsPageState::C_COUNT; ++i) {
         if (OptionsPageState::check_rect(i).contains(lx, ly)) {
             opt_.chk[i] = !opt_.chk[i];   // BS_AUTOCHECKBOX
+            if (i >= OptionsPageState::C_OVERRIDE && g_user_settings) {
+                opt_.commit(*g_user_settings);
+                save_user_settings(*g_user_settings);
+            }
             return true;
         }
     }

@@ -2,6 +2,7 @@
 #include "doctest.h"
 #include "ra2assets/asset_fs.hpp"
 #include "asset_fixture.hpp"
+#include "ra2assets/pal.hpp"
 
 #include <cstdio>
 #include <string>
@@ -115,4 +116,21 @@ TEST_CASE("cameo archives are searchable without losing RA2-before-Yuri ordering
     CHECK(index_of(o,"cameomd.mix") >= 0);
     CHECK(index_of(o,"expand01.mix") < index_of(o,"language.mix/cameo.mix"));
     CHECK(index_of(o,"language.mix/cameo.mix") < index_of(o,"ra2md.mix"));
+}
+
+TEST_CASE("AssetFS: unit and overlay palettes resolve for every RA2 and Yuri theater") {
+    if (!ra2fixture::assets_available() || !ra2fixture::ra2_available()) {
+        MESSAGE("Game archives unavailable"); return;
+    }
+    for (const auto* name : {"TEMPERATE","SNOW","URBAN","NEWURBAN","DESERT","LUNAR"}) {
+        CAPTURE(name);
+        const auto* chain=theater_chain(name); REQUIRE(chain);
+        AssetFS assets(dir(),chain);
+        for (const auto* palette : {chain->unit_pal,chain->theater_pal,"cameo.pal"}) {
+            CAPTURE(palette);
+            std::vector<std::uint8_t> raw; REQUIRE(assets.read(palette,raw));
+            CHECK(raw.size()==768);
+            CHECK_NOTHROW(ra2assets::Palette::load(raw.data(),raw.size()));
+        }
+    }
 }

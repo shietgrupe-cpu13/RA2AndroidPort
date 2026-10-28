@@ -79,7 +79,7 @@ void relayout_canvas(int gw=0,int gh=0) {
     SDL_Log("[lifecycle] resize: canvas %dx%d -> %dx%d", kWinW, kWinH, gw, gh);
     set_canvas_size(gw, gh);
     lay_ = ra2engine::SidebarLayout::compute(kWinW, kWinH, buildable_);
-    playfield_w_ = kWinW - (sidebar_up_ ? lay_.bar.w : 0);
+    playfield_w_ = lay_.battlefield_width(kWinW,sidebar_up_);
     input_.set_viewport(playfield_w_, kWinH);
     if (campaign_ && local_.valid) {   // the LocalSize clamp (campaign_view_setup)
         const int W = local_.size_w;

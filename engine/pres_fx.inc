@@ -136,6 +136,7 @@ public:
         int house = -1;          // W3-B owner (AltPalette remap), -1 none
         int delay = 1;           // W3-B per-instance delay (RandomRate), else the type's
         bool object_layer = false; // per-instance vent emission; type Flat is unchanged
+        bool unit_palette = false;
         bool hold = false;       // W3-B: stays on its last frame (DestroyAnim ruins)
         std::shared_ptr<ra2assets::Palette> own_pal;   // W4: the building's art Palette= (lib)
     };
@@ -788,6 +789,11 @@ public:
         if ((t->crater || t->scorch) && g_smudge_hook && lift_px < 30.0) g_smudge_hook(t->crater, fx, fy);
         return t;
     }
+    const FxAnimType* spawn_deploy(const std::string& name,double x,double y,int level,int house) {
+        const auto* t=spawn(name,x,y,level,0.0,0.0,house,true);
+        if(t)anims_.back().unit_palette=true;
+        return t;
+    }
     // W3-B: one logic tick (Presentation::logic_tick, inside GameScene's
     // fixed 15 Hz loop) -- anims and beams age in game frames, never by the
     // render rate.
@@ -849,8 +855,8 @@ public:
             if (a.own_pal)
                 draw_anim_frame(ren, tc, *a.t, fr, cx, cy, W, H, a.own_pal.get(), ":own");
             else
-                draw_anim_frame(ren, tc, *a.t, fr, cx, cy, W, H, a.t->altpal ? alt_palette(a.house) : nullptr,
-                                a.t->altpal ? ":h" + std::to_string(a.house) : std::string());
+                draw_anim_frame(ren, tc, *a.t, fr, cx, cy, W, H, (a.t->altpal || a.unit_palette) ? alt_palette(a.house) : nullptr,
+                                (a.t->altpal || a.unit_palette) ? ":h" + std::to_string(a.house) : std::string());
         }
         if (pass == 1) draw_attached(ren, tc, cam, W, H);   // W7-12-23 mind-control rings / links
         if (pass == (split_light_ ? 2 : 1)) draw_beams(ren, cam);   // W2-GA-15

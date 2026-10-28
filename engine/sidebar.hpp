@@ -59,6 +59,10 @@ enum class CameoState { Available, Disabled, Building, Ready };
 // 20 + 32*i, power pips at x 0, scroll-up at 39+45, side3 18 px tall,
 // options (14, 21) / diplomacy (86, 21). Default 0, so every gate / test
 // layout is the Allied one; GameScene sets it from the player's side.
+void set_sidebar_reference_height(int height);
+void set_sidebar_preferences(int scale, int cells);
+int sidebar_scale();
+int sidebar_cells();
 void set_sidebar_style(int style);
 int sidebar_style();
 
@@ -66,6 +70,11 @@ int sidebar_style();
 struct CameoCell { int type = -1; SbRect rect; };
 
 struct SidebarLayout {
+    float scale = 1.0f;
+    bool compact = false;
+    int battlefield_width(int width,bool visible) const { return width-(visible && !compact ? bar.w : 0); }
+    SidebarLayout unscaled() const;
+    void scale_rects(float factor);
     SbRect bar;              // whole sidebar column (right edge, full height)
     SbRect credits;          // credits.shp backdrop (tally centered at x+84)
     SbRect top_cap;          // top.shp bevel cap

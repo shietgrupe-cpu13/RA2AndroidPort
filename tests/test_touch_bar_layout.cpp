@@ -63,3 +63,38 @@ TEST_CASE("compact instruction card clears the panel and captures cancel safely"
         CHECK(c.route(C::Down,x.x+5,x.y+5,0,0,false,b,x)==C::Pass);
     }
 }
+
+TEST_CASE("touch layout: density scaling preserves a 48dp target across live canvas sizes") {
+    using L=ra2engine::TouchBarLayout;
+    for(int w:{1280,2400}) {
+        const int h=w==1280?720:1080;
+        L::canvas_density(3.0f,2400,1080,w,h);
+        const auto r=L::button(w,h,13,0);
+        const float pixel_scale=std::min(2400.0f/w,1080.0f/h);
+        CHECK(r.h*pixel_scale>=143.0f);
+    }
+    L::canvas_density(0,0,0,0,0);
+    CHECK(L::scale_factor()==1.0f);
+}
+
+#include "../engine/presentation_policy.hpp"
+TEST_CASE("native health bars: Off, selected/damaged and Always apply consistently") {
+    using ra2engine::health_bar_visible;
+    for(bool selected:{false,true})for(bool damaged:{false,true})for(bool hovered:{false,true})for(bool repair:{false,true}) {
+        CHECK_FALSE(health_bar_visible(0,selected,damaged,hovered,repair));
+        CHECK(health_bar_visible(2,selected,damaged,hovered,repair));
+        CHECK(health_bar_visible(1,selected,damaged,hovered,repair)==(selected||damaged||hovered||repair));
+    }
+}
+TEST_CASE("free touch HUD: compact button geometry is screen-wide and independent of world resolution") {
+    using L=ra2engine::TouchBarLayout;
+    L::canvas_density(3,2400,1080,1280,720);
+    const auto r=L::floating(1280,720,100,100,60);
+    CHECK(r.x+r.w==1280);CHECK(r.y+r.h==720);
+    CHECK(r.h*1.5==doctest::Approx(36*3*.6).epsilon(0.02));
+    L::canvas_density(3,2400,1080,1920,1080);
+    const auto large=L::floating(1920,1080,100,100,60);
+    CHECK(large.x+large.w==1920);CHECK(large.y+large.h==1080);
+    CHECK(large.h==doctest::Approx(r.h*1.5).epsilon(0.02));
+    L::canvas_density(0,0,0,0,0);
+}

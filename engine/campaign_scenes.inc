@@ -40,7 +40,7 @@ public:
         try {
             ra2assets::MixFile ra2 = ra2assets::MixFile::open_path(dir_ + "ra2.mix");
             hud_font_load(ra2);   // W2-UI-19: the loading text is game.fnt
-            const ra2engine::CampaignTables tables = camp::load_tables(ra2);
+            const ra2engine::CampaignTables tables = camp::load_tables(ra2, cfg_.campaign_map);
             const ra2engine::MissionInfo mi = tables.mission(cfg_.campaign_map);
             try {   // W5-E: the map's Intro= / Brief= movies [RE: campaign.md §8]
                 const ra2engine::ScenarioBasic b = ra2engine::parse_scenario_basic(camp::load_map_ini(dir_, cfg_.campaign_map));
@@ -218,12 +218,15 @@ ra2engine::SkirmishConfig campaign_config(const std::string& map, const std::str
 
 // The first mission of a battle.ini campaign (RE §3.1): ALL1 / SOV1.
 Scene* make_campaign_start_scene(bool no_audio, const char* battle, const char* side, int difficulty = 1) {
-    std::string map = std::string(battle) == "SOV1" ? "SOV01t.MAP" : "ALL01t.MAP";
+    const bool yr = std::string(battle).rfind("YR_", 0) == 0;
+    const std::string id = yr ? std::string(battle).substr(3) : battle;
+    std::string map = id == "SOV1" ? (yr ? "SOV01umd.MAP" : "SOV01t.MAP")
+                                   : (yr ? "ALL01umd.MAP" : "ALL01t.MAP");
     try {
         const std::string dir = env_install_dir();
         ra2assets::MixFile ra2 = ra2assets::MixFile::open_path(dir + "ra2.mix");
-        const ra2engine::CampaignTables t = camp::load_tables(ra2);
-        if (const ra2engine::BattleEntry* b = t.battle(battle)) map = b->scenario;
+        const ra2engine::CampaignTables t = camp::load_tables(ra2, map);
+        if (const ra2engine::BattleEntry* b = t.battle(id)) map = b->scenario;
     } catch (const std::exception&) {}
     return new CampaignLoadScene(no_audio, campaign_config(map, side, difficulty));
 }
@@ -239,7 +242,7 @@ public:
         try {
             const std::string dir = env_install_dir();
             ra2assets::MixFile ra2 = ra2assets::MixFile::open_path(dir + "ra2.mix");
-            const ra2engine::CampaignTables t = camp::load_tables(ra2);
+            const ra2engine::CampaignTables t = camp::load_tables(ra2, cfg_.campaign_map);
             const ra2engine::ScenarioBasic b =
                 ra2engine::parse_scenario_basic(camp::load_map_ini(dir, cfg_.campaign_map));
             end_of_game_ = b.end_of_game;

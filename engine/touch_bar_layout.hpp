@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <cstdlib>
+#include <cmath>
 
 namespace ra2engine {
 struct TouchBarLayout {
@@ -8,12 +9,30 @@ struct TouchBarLayout {
     static constexpr int columns = 4, height = 56, gap = 4, margin = 8;
     static constexpr int panel_width = 300, header_height = 64;
 
+    static inline float density_scale=1.0f;
+    static inline float dp_to_canvas=1.0f;
+    static Rect floating(int w,int h,float x,float y,float size=100) {
+        float user=1.0f;
+        if(const char* s=std::getenv("RA2_TOUCH_SCALE"))user=std::clamp(std::atoi(s),40,160)/100.0f;
+        const float f=dp_to_canvas*user*std::clamp(size,40.0f,180.0f)/100.0f;
+        const int bw=std::min(w,std::max(1,int(std::lround(64*f))));
+        const int bh=std::min(h,std::max(1,int(std::lround(36*f))));
+        return {int(std::lround(std::clamp(x,0.0f,100.0f)*(w-bw)/100)),
+                int(std::lround(std::clamp(y,0.0f,100.0f)*(h-bh)/100)),bw,bh};
+    }
+    static void canvas_density(float density,int ow,int oh,int w,int h) {
+        density_scale=1.0f;dp_to_canvas=1.0f;
+        if(density>0 && ow>0 && oh>0 && w>0 && h>0)
+            dp_to_canvas=density/std::min(float(ow)/w,float(oh)/h);
+        if(density>0 && ow>0 && oh>0 && w>0 && h>0)
+            density_scale=std::max(1.0f,48.0f*density/(height*std::min(float(ow)/w,float(oh)/h)));
+    }
     static float scale_factor() {
         if (const char* v = std::getenv("RA2_TOUCH_SCALE")) {
             int s = std::atoi(v);
-            if (s >= 70 && s <= 160) return static_cast<float>(s) / 100.0f;
+            if (s >= 70 && s <= 160) return density_scale*static_cast<float>(s) / 100.0f;
         }
-        return 1.0f;
+        return density_scale;
     }
     static int scaled(int val) {
         return static_cast<int>(static_cast<float>(val) * scale_factor());
