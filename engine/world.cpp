@@ -546,9 +546,15 @@ void World::set_ally_view(int a, int b, bool allied) {
 }
 
 bool World::is_enemy(int a, int b) const {
+    if (a < 0 || b < 0) return false;
     if (a == b) return false;
     if (allied_with(a, b)) return false;
-    if (houses_configured_ && (!house_combatant(a) || !house_combatant(b))) return false;
+    const int nh = neutral_house();
+    if (nh >= 0 && (a == nh || b == nh)) return false;
+    if (houses_configured_) {
+        if (!house_combatant(a) || !house_combatant(b)) return false;
+        return !are_allied(a, b);
+    }
     return true;
 }
 
