@@ -42,6 +42,13 @@ TEST_CASE("high bridges: resolved outer lanes retain separate ground and deck, c
         w.sync_deck_layer(u);
         CHECK(u.on_deck == 1);
         CHECK(unit_on_high_bridge(w, u));
+        // Rendering can lag a simulation cell transition by a fraction of a
+        // tick. The deck plane must follow the displayed coordinates, not the
+        // just-advanced discrete cell.
+        const int sim_x=u.cell_x, sim_y=u.cell_y;
+        u.cell_x=north?25:22; u.cell_y=north?22:25;
+        CHECK(unit_on_high_bridge_at(w,u,xs[2],ys[2]));
+        u.cell_x=sim_x; u.cell_y=sim_y;
         u.on_deck = 0; CHECK_FALSE(unit_on_high_bridge(w, u));
         u.on_deck = 1; u.is_naval = true; CHECK_FALSE(unit_on_high_bridge(w, u));
         u.is_naval = false; u.is_aircraft = true; u.altitude = 1;

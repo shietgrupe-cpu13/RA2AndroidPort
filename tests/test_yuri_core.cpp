@@ -674,6 +674,20 @@ TEST_CASE("Yuri core: mobile slave miner satisfies PROC but not other prerequisi
     CHECK(w.econ_produce(0,QueueCat::Structure,2)==ProdResult::Started);
 }
 
+TEST_CASE("Yuri core: naval yard production requires open map water") {
+    Rig r;World w(r.map);
+    BuildingTypeDef cy;cy.id="GACNST";cy.conyard=true;cy.strength=500;cy.tech_level=1;
+    BuildingTypeDef yard;yard.id="GAYARD";yard.strength=500;yard.tech_level=1;
+    w.set_economy({cy,yard},{},OreValues{},1000,0,0);
+    w.add_building(0,2,2,1,1,0,500,0,0,true);
+    PlayerEconRules econ;econ.bld_allowed={1,1};econ.water_bound={0,1};
+    w.enable_player_economy(0,5000);w.set_player_econ_rules(0,econ);
+    CHECK_FALSE(w.econ_can_build(0,QueueCat::Structure,1));
+    std::vector<ra2assets::LandType> water(static_cast<std::size_t>(w.grid_w())*w.grid_h(),ra2assets::LandType::Water);
+    w.set_water_terrain(water);
+    CHECK(w.econ_can_build(0,QueueCat::Structure,1));
+}
+
 TEST_CASE("Yuri core: mobile miner seeks ore and explicit Stop persists through save") {
     Rig r;World w(r.map);BuildingTypeDef d;d.id="YAREFN";d.fw=d.fh=2;d.slave_count=2;
     d.slave_combat=unit("SLAV");
@@ -991,6 +1005,26 @@ TEST_CASE("Yuri core: captured units leave their previous AI team immediately") 
     w.set_unit_owner(0,0);
     CHECK(state->teams[0].members.empty());CHECK(state->teams[0].member_types.empty());
     CHECK_FALSE(w.units()[0].tg.team_aggressive);CHECK_FALSE(w.units()[0].tg.team_suicide);
+}
+
+TEST_CASE("Yuri core: loaded AI rosters restore building flags by identity") {
+    Rig r; World original(r.map);
+    BuildingTypeDef grinder, reactor;
+    grinder.id="YAGRND"; grinder.grinding=true;
+    reactor.id="YAPOWR"; reactor.bio_reactor=true;
+    AiHouseConfig cfg; cfg.roster={reactor,grinder};
+    original.enable_ai_house(1,cfg);
+    World loaded(r.map);
+    REQUIRE(save::load_world(loaded,save::save_world(original)));
+    loaded.refresh_building_types({grinder,reactor});
+    const auto* restored=loaded.ai_config(1); REQUIRE(restored);
+    REQUIRE(restored->roster.size()==2);
+    CHECK(restored->roster[0].id=="YAPOWR");
+    CHECK(restored->roster[0].bio_reactor);
+    CHECK_FALSE(restored->roster[0].grinding);
+    CHECK(restored->roster[1].id=="YAGRND");
+    CHECK(restored->roster[1].grinding);
+    CHECK_FALSE(restored->roster[1].bio_reactor);
 }
 
 TEST_CASE("Slave Miner deploy: friendly blockers walk out before conversion; no teleport") {

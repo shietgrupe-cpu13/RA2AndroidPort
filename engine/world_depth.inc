@@ -75,6 +75,9 @@ void depth_arm_rules(ra2engine::World& world, const Rules& rules) {
                            rules.section_flag("MultiplayerDialogSettings", "BridgeDestruction", true);
     r.armed = true;
     world.set_depth_rules(r);
+    for (const char* section : {"InfantryTypes", "VehicleTypes"})
+        for (const std::string& id : rules.listed_types(section))
+            world.set_unit_soylent(id, static_cast<int>(rules.section_double(id, "Soylent", 0.0)));
     // Wave-7 fix (units): W7-01-03 the PermaDisguise look per side ([General]
     // AlliedDisguise / SovietDisguise / ThirdDisguise -> their SHP image) and
     // W7-03-04 InfantryBlinkDisguiseTime.
@@ -92,7 +95,7 @@ void depth_arm_rules(ra2engine::World& world, const Rules& rules) {
 // Is `id` a building the World must own for G16 (garrisonable or a bridge
 // repair hut) although it is not in the playable roster?
 bool depth_world_building(const Rules& rules, const std::string& id) {
-    return rules.section_flag(id, "CanBeOccupied", false) || rules.section_flag(id, "BridgeRepairHut", false) ||
+    return rules.section_flag(id, "CanBeOccupied", false) || rules.section_flag(id, "Grinding", false) || rules.section_flag(id, "BridgeRepairHut", false) ||
            // Wave-5 (R-056 / item 3): an engineer-capturable tech structure
            // (Capturable=yes NeedsEngineer=yes: Tech Airport, Hospital,
            // Machine Shop, Power Plant, Outpost, Secret Lab...) is a real
@@ -127,6 +130,7 @@ int depth_register_building(BuildingAssets& ba, const ra2assets::MixFile& ra2, c
     d.explosion = rules.explosion_first(id);
     d.unsellable = rules.section_flag(id, "Unsellable", false);
     d.click_repairable = rules.section_flag(id, "ClickRepairable", true);
+    d.grinding = rules.section_flag(id, "Grinding", false);
     // W2-SK-12/19/20: the same Capturable/Spyable/UnitRepair flags as the roster.
     d.capturable = rules.section_flag(id, "Capturable", false);
     d.spyable = rules.section_flag(id, "Spyable", false);

@@ -234,6 +234,33 @@ bool World::fire_superweapon_at(int house, SuperweaponType type, int cx, int cy,
             an_iron_curtain(house, cx, cy);
             an_event(SwEvent::Activated, house, type, cx, cy);
             break;
+        case SuperweaponType::ForceShield: {
+            // Yuri's Revenge Force Shield protects allied BUILDINGS only. Its
+            // duration and radius are resolved from [General]; the blackout
+            // duration is carried in this SW grant's pmax slot (unused by this
+            // effect) so it remains rules-driven without changing save layout.
+            const double radius = std::max(0.0, rec->eff_cell_spread) * kLept;
+            const int duration = std::max(0, rec->eff_damage);
+            for (Building& b : buildings_) {
+                if (!b.alive || b.state == Building::State::Dead || !are_allied(house, b.house)) continue;
+                double nearest = -1.0;
+                for (const Cellxy& c : foundation_cells(b.cx, b.cy, b.fw, b.fh)) {
+                    const double d = om::hypot((c.x - cx) * kLept, (c.y - cy) * kLept);
+                    if (nearest < 0.0 || d < nearest) nearest = d;
+                }
+                if (nearest >= 0.0 && nearest <= radius)
+                    b.iron_left_frames = std::max(b.iron_left_frames, duration);
+            }
+            if (house >= 0) {
+                if (static_cast<int>(blackout_frames_.size()) <= house)
+                    blackout_frames_.resize(static_cast<std::size_t>(house) + 1, 0);
+                blackout_frames_[static_cast<std::size_t>(house)] = std::max(
+                    blackout_frames_[static_cast<std::size_t>(house)],
+                    std::max(0, static_cast<int>(om::lround(rec->eff_percent_at_max))));
+            }
+            an_event(SwEvent::Activated, house, type, cx, cy);
+            break;
+        }
         case SuperweaponType::ChronoSphere:
         case SuperweaponType::ChronoWarp:
             if (cx2 < 0 || cy2 < 0 || cx2 >= grid_w_ || cy2 >= grid_h_) return false;

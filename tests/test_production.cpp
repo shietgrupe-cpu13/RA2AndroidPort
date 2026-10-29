@@ -285,6 +285,23 @@ TEST_CASE("production: FOUR queues advance concurrently and independently [RE-GA
     CHECK_FALSE(q.ready(QueueCat::Vehicle));
 }
 
+TEST_CASE("production: naval and vehicle jobs retain separate progress") {
+    auto u=unit_roster();
+    u[1].is_vehicle=true;
+    u.push_back(u[1]);u.back().id="DRED";u.back().cost=4000;u.back().naval=true;
+    ProductionQueues q;q.set_credits(10000);
+    q.start_unit(QueueCat::Vehicle,1,u,0.7);
+    q.start_unit(QueueCat::Naval,2,u,0.7);
+    const double speed[kQueueCats]={1,1,1,1,1,1};
+    std::vector<BuildingTypeDef> buildings;
+    for(int i=0;i<60;++i)q.tick_all(1.0/15.0,1.0,speed,buildings);
+    CHECK(q.producing(QueueCat::Vehicle)==1);
+    CHECK(q.producing(QueueCat::Naval)==2);
+    CHECK(q.state(QueueCat::Vehicle).slot.stage>0);
+    CHECK(q.state(QueueCat::Naval).slot.stage>0);
+    CHECK(q.state(QueueCat::Vehicle).slot.total_frames!=q.state(QueueCat::Naval).slot.total_frames);
+}
+
 TEST_CASE("production: cancelling TWO queues in one frame refunds BOTH (no lost credits)") {
     // Regression: a lost ConYard cancels BOTH building queues in one frame, so
     // multiple cancels must each land in the shared pool. The prior

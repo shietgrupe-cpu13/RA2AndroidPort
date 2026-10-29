@@ -103,6 +103,11 @@ public:
             m[i] = d.tech_level > 0 && d.tech_level <= cfg_.tech_level &&
                    rp_country_allows(rules_, d.id, country) && camp::allowed_type(pr, d.id);
             if (!cfg_.superweapons && m[i] && rp_is_lobby_sw_building(rules_, d.id)) m[i] = 0;
+            if (m[i] && i < rp_sw_table_.size() &&
+                rp_sw_table_[i].type != ra2engine::SuperweaponType::None) {
+                for (const ra2engine::Building& b : world_.buildings())
+                    if (b.alive && b.house == h && b.type == static_cast<int>(i)) { m[i] = 0; break; }
+            }
         }
         return m;
     }
@@ -210,13 +215,12 @@ private:
         input_.set_unit_factory_types(unit_ft);
         input_.set_infantry_factory_types(inf_ft_);
         input_.set_vehicle_factory_types(any_veh);
-        // W2-AN-04/18: every supported SW building grants its SW; the lobby
-        // checkbox removes only the DisableableFromShell=yes ones (AmerParaDrop
-        // stays with superweapons off). W2-CA-03: a campaign keeps them all.
+        // Every supported SW building grants its SW; the skirmish checkbox
+        // controls all supported types. Campaign rules keep their own grants.
         rp_sw_table_ = rp_superweapon_table(ba_, rules_);
         if (!sw)
             for (RpSwGrant& g : rp_sw_table_)
-                if (g.disableable) g = RpSwGrant{};
+                if (g.type != ra2engine::SuperweaponType::None) g = RpSwGrant{};
         rp_nuke_ = resolve_superweapon(rules_);
         w2_setup(/*skirmish=*/true);   // campaigns run the rules-driven path too (W2-CA-03)
         rp_base_normal_.assign(ba_.roster.size(), 1);
@@ -278,9 +282,24 @@ private:
                 const bool def = i < static_cast<int>(ba_.defense.size()) && ba_.defense[i] != 0;
                 if (def != (tab == 1)) continue;
                 const bool queued = lq().producing(bc) == i;
+                const bool water_bound = i < static_cast<int>(ba_.water_bound.size()) && ba_.water_bound[i];
+                const auto& water = world_.grid_for(ra2engine::MovementDomain::Water);
+                if (!queued && water_bound &&
+                    std::none_of(water.begin(), water.end(), [](std::uint8_t cell) { return cell != 0; }))
+                    continue;
                 if (!queued &&
                     !ra2engine::prerequisites_met(d.prerequisite, bs, ba_.roster, local_house_, ba_.groups, &world_.units()))
                     continue;
+                // A skirmish house may own at most one copy of each supported
+                // superweapon building. Keep an already queued item visible so
+                // it can still be cancelled from the sidebar.
+                if (!queued && i < static_cast<int>(rp_sw_table_.size()) &&
+                    rp_sw_table_[static_cast<std::size_t>(i)].type != ra2engine::SuperweaponType::None) {
+                    const bool already_built = std::any_of(bs.begin(), bs.end(), [&](const ra2engine::Building& b) {
+                        return b.alive && b.house == local_house_ && b.type == i;
+                    });
+                    if (already_built) continue;
+                }
                 v.push_back(i);
             }
             std::stable_sort(v.begin(), v.end(), [&](int a, int b) {

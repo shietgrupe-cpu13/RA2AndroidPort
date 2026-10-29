@@ -158,8 +158,12 @@
         build_timer_stack();
         const double sc = hud_touch_scale();   // W6-01-12: 1.5x on a touch canvas
         const int fh = static_cast<int>((hud_line_h() + 2) * sc);
+        // Keep the stack level with the visible sidebar bottom. In compact
+        // layouts, anchoring to the screen bottom leaves it below the sidebar.
+        const int right = sidebar_up_ ? lay_.bar.x - 3 : playfield_w_ - 3;
+        const int bottom = sidebar_up_ ? std::min(kWinH, lay_.bar.y + lay_.bar.h) : kWinH;
         for (std::size_t i = 0; i < timer_lines_.size(); ++i)
-            hud_text(ren, tc, timer_lines_[i].text, playfield_w_ - 3, kWinH - fh * static_cast<int>(i + 1),
+            hud_text(ren, tc, timer_lines_[i].text, right, bottom - fh * static_cast<int>(i + 1),
                      timer_lines_[i].col, kHudRight, false, true, sc);
     }
     void draw_end_banner(SDL_Renderer* ren, ra2engine::TextureCache& tc, const std::string& s) const {

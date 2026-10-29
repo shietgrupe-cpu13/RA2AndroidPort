@@ -403,7 +403,7 @@ class InGameMenu {
 public:
     enum Choice { None, Resume, Load, Save, Delete, Abort, Restart, Settings, Committed, MusicPlay, MusicStop,
                   Leave, Observe, DipAlly, DipListen, ShareReport };   // W9-05-06/03/07 (network game)
-    enum Page { P_OPTIONS = 0, P_CONTROLS, P_SOUND, P_ABORT, P_DIPLOMACY };
+    enum Page { P_OPTIONS = 0, P_CONTROLS, P_SOUND, P_ABORT, P_DIPLOMACY, P_AUTOSAVE };
     // W2-UI-29: one row of the Diplomacy page 0x73 (read-only in skirmish).
     // W9-05-03/07/11: `house`, the live Allies box (ally_enabled) and the
     // Chat listener box (listen / listen_enabled) of a network game.
@@ -452,7 +452,9 @@ public:
         if (ev.kind == IE::Quit || (ev.kind == IE::Key && ev.key == ra2engine::kKeyEscape)) {
             // G-01: Esc = the page's bottom button (Resume / Back).
             if (page_ == P_OPTIONS || page_ == P_ABORT || page_ == P_DIPLOMACY) { close(); return Resume; }
-            const Choice c = page_ == P_SOUND ? (page_ = P_CONTROLS, Committed) : (page_ = P_OPTIONS, Committed);
+            const Choice c = (page_ == P_SOUND || page_ == P_AUTOSAVE)
+                                 ? (page_ = P_CONTROLS, Committed)
+                                 : (page_ = P_OPTIONS, Committed);
             return c;
         }
         int lx = 0, ly = 0;
@@ -492,6 +494,23 @@ public:
         if(page_==P_CONTROLS && ra2engine::SbRect{48,402,370,26}.contains(lx,ly)) {
             set_.sidebar_cells=set_.sidebar_cells==0 ? 6 : set_.sidebar_cells>=60 ? 0 : set_.sidebar_cells+2;
             publish();if(g_user_settings)save_user_settings(*g_user_settings);return Settings;
+        }
+        if (page_ == P_AUTOSAVE && ra2engine::SbRect{48, 128, 370, 30}.contains(lx, ly)) {
+            set_.autosave_enabled = !set_.autosave_enabled;
+            publish();
+            if (g_user_settings) save_user_settings(*g_user_settings);
+            return Settings;
+        }
+        if (page_ == P_AUTOSAVE && ra2engine::SbRect{48, 176, 370, 30}.contains(lx, ly)) {
+            static constexpr int intervals[] = {1, 3, 5, 10, 15, 30};
+            int next = intervals[0];
+            for (std::size_t i = 0; i < std::size(intervals); ++i)
+                if (intervals[i] == set_.autosave_interval_minutes)
+                    next = intervals[(i + 1) % std::size(intervals)];
+            set_.autosave_interval_minutes = next;
+            publish();
+            if (g_user_settings) save_user_settings(*g_user_settings);
+            return Settings;
         }
         // Page controls.
         for (int i = 0; i < kSliders; ++i) {
@@ -544,7 +563,7 @@ public:
             const SDL_Rect panel=p.dev(0,0,472,448);
             SDL_RenderFillRect(ren,&panel);
             p.header(header(),20,20,420,24);
-            p.label("Live battlefield preview",48,70,370,20,0);
+            p.label("Game Controls",48,70,370,20,0);
             p.label(std::to_string(g_ui_w)+" x "+std::to_string(g_ui_h),48,96,370,20,0);
             for (std::size_t i=0;i<btns.size();++i)
                 shell_small_button(p,btns[i].rect,btns[i].label,int(i)==hover,
@@ -561,6 +580,12 @@ public:
             p.label(gf_csf("GUI:ScrollRate", "Scroll Rate"), 6, 189, 117, 24, 2);
             p.label(gf_csf("GUI:Faster", "Faster"), 331, 189, 100, 24, 0);
             p.label("HUD text size", 6, 219, 117, 24, 2);
+        } else if (page_ == P_AUTOSAVE) {
+            p.label("Periodic single-player saves (network matches are not saved).", 48, 91, 370, 24, 0);
+            shell_small_button(p, {48,128,370,30}, std::string("Autosave: ") + (set_.autosave_enabled ? "On" : "Off"),
+                               ra2engine::SbRect{48,128,370,30}.contains(lx,ly), down_);
+            shell_small_button(p, {48,176,370,30}, "Interval: every " + std::to_string(set_.autosave_interval_minutes) + " minutes (tap)",
+                               ra2engine::SbRect{48,176,370,30}.contains(lx,ly), down_, set_.autosave_enabled);
         } else if (page_ == P_SOUND) {
             static const char* kL[3] = {"GUI:MusicVolume", "GUI:SoundVolume", "GUI:VoiceVolume"};
             static const char* kF[3] = {"Music Volume", "Sound Volume", "Voice Volume"};
@@ -620,7 +645,7 @@ public:
         p.set("menu_open", open_ ? 1 : 0);
         kb_.play_probe(p);
         if (!open_ || kb_.open_) return;
-        static const char* kPages[5] = {"options", "controls", "sound", "abort", "diplomacy"};
+        static const char* kPages[6] = {"options", "controls", "sound", "abort", "diplomacy", "autosave"};
         p.set("diplomacy_rows", static_cast<int>(dip_.size()));
         if (page_ == P_DIPLOMACY)   // W9-05: the self row, the live boxes
             for (std::size_t k = 0; k < dip_.size() && k < 8; ++k) {
@@ -695,7 +720,7 @@ public:
     }
 
 private:
-    enum Act { A_NONE = 0, A_CONTROLS, A_LOAD, A_SAVE, A_DELETE, A_ABORTPAGE, A_RESUME, A_SOUND, A_KEYBOARD,
+    enum Act { A_NONE = 0, A_CONTROLS, A_LOAD, A_SAVE, A_DELETE, A_ABORTPAGE, A_RESUME, A_SOUND, A_KEYBOARD, A_AUTOSAVE,
                A_BACK, A_ABORT, A_RESTART, A_LEAVE, A_OBSERVE, A_REPORT };
     bool mp_net_ = false, mp_can_observe_ = false;   // W9-05-06
     int dip_pick_ = -1;                              // W9-05-03/07: the row's house
@@ -712,6 +737,7 @@ private:
     std::string header() const {
         switch (page_) {
             case P_SOUND: return gf_csf("GUI:SoundOptions", "Sound Options");
+            case P_AUTOSAVE: return "Autosave Settings";
             case P_ABORT: return gf_csf("GUI:AbortMission", "Abort Mission");
             case P_DIPLOMACY: return gf_csf("GUI:DiplomacyMenu", "Diplomacy Options");
             default: return gf_csf("GUI:GameOptions", "Game Options");
@@ -728,8 +754,11 @@ private:
 #ifdef __ANDROID__
                         b(2, "Share game report", true, A_REPORT),
 #endif
+                        b(3, "Autosave", true, A_AUTOSAVE),
                         b(5, gf_csf("GUI:Back", "Back"), true, A_BACK)};
             case P_SOUND:
+                return {b(5, gf_csf("GUI:Back", "Back"), true, A_BACK)};
+            case P_AUTOSAVE:
                 return {b(5, gf_csf("GUI:Back", "Back"), true, A_BACK)};
             case P_DIPLOMACY:   // 0x423 GUI:Return
                 return {b(5, gf_csf("GUI:Return", "Return"), true, A_RESUME)};
@@ -774,7 +803,8 @@ private:
                                          : page_ == P_DIPLOMACY ? "STT:DiplomacyButtonReturn" : "STT:IGSingleOptButtonBack", "");
             case A_SOUND: return gf_csf("STT:MainOptButtonSound", "");
             case A_KEYBOARD: return gf_csf("STT:MainOptButtonKeyboard", "");
-            case A_BACK: return gf_csf(page_ == P_SOUND ? "STT:SoundOptButtonBack" : "STT:GameOptButtonBack", "");
+            case A_AUTOSAVE: return "Configure periodic saves and interval.";
+            case A_BACK: return gf_csf((page_ == P_SOUND || page_ == P_AUTOSAVE) ? "STT:SoundOptButtonBack" : "STT:GameOptButtonBack", "");
             case A_ABORT: return gf_csf("STT:ConfirmExitButtonAbort", "");
             case A_RESTART: return gf_csf("STT:ConfirmExitButtonRestart", "");
             case A_LEAVE: return gf_csf("STT:ConfirmExitButtonLeave", "");
@@ -792,8 +822,9 @@ private:
             case A_RESUME: close(); return Resume;
             case A_SOUND: page_ = P_SOUND; return None;
             case A_KEYBOARD: kb_.open(); return None;
+            case A_AUTOSAVE: page_ = P_AUTOSAVE; return None;
             case A_REPORT: return ShareReport;
-            case A_BACK: page_ = (page_ == P_SOUND) ? P_CONTROLS : P_OPTIONS; return Committed;
+            case A_BACK: page_ = (page_ == P_SOUND || page_ == P_AUTOSAVE) ? P_CONTROLS : P_OPTIONS; return Committed;
             case A_ABORT: close(); return Abort;
             case A_RESTART: close(); return Restart;
             case A_LEAVE: close(); return Leave;

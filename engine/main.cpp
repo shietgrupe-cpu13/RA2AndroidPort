@@ -2796,12 +2796,17 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
     // W3-FIX-A: over the theater's global MIX search list (asset_search.inc).
     auto resolve_shp = [&](const std::string& image) -> ShpFile {
         ShpFile shp;
-        if (asset_building_shp(image, shp, /*ra2_only=*/true)) return shp;
+        // Search the complete theater chain first so an Urban/Snow specific
+        // image in a Yuri theater overlay wins over a generic RA2 image.
+        // The old order accepted the generic RA2 fallback here and never
+        // reached the theater-specific candidate (notably for deployed MCVs).
+        if (asset_building_shp(image, shp, /*ra2_only=*/false)) return shp;
         // W6-04-17/18/21 (U-1: the engine runs the YR data set): a roster
         // building the RA2 archives lack (NABNKR, NAINDP, GAROBO) takes its YR
         // art (genermd.mix / snowmd.mix -- the R-201 "art absent" census was
-        // stale). Every RA2-resolved building is unchanged.
-        if (asset_building_shp(image, shp, /*ra2_only=*/false)) return shp;
+        // stale). Keep the classic-only pass as a guarded fallback for unusual
+        // mixed installs.
+        if (asset_building_shp(image, shp, /*ra2_only=*/true)) return shp;
         throw std::runtime_error("no theater candidate resolved for " + image);
     };
     (void)get_mix;
@@ -3120,7 +3125,8 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
     const std::pair<ra2engine::SuperweaponType, const char*> kYuriSwIcons[] = {
         {ra2engine::SuperweaponType::PsychicDominator, "PsychicDominatorSpecial"},
         {ra2engine::SuperweaponType::GeneticConverter, "GeneticConverterSpecial"},
-        {ra2engine::SuperweaponType::PsychicReveal, "PsychicRevealSpecial"}};
+        {ra2engine::SuperweaponType::PsychicReveal, "PsychicRevealSpecial"},
+        {ra2engine::SuperweaponType::ForceShield, "ForceShieldSpecial"}};
     for (const auto& entry : kYuriSwIcons) {
         try {
             std::string name = rules.section_string(entry.second, "SidebarImage", "");
@@ -4573,6 +4579,10 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
         }
         SDL_SetRenderDrawBlendMode(ren,blend);
     }
+    // Route/waypoint lines are on the ground plane; draw low bridge decks over
+    // those indicators, then let the normal object sort place crossing units
+    // above the deck.
+    if (g_map_dressing) g_map_dressing->draw_bridge_ground(ren, tc, world, g_map_pals, cam, W, H);
     // Sprites back-to-front so nearer units overlap farther ones. Vehicles
     // (an image with a VehicleAssets entry) draw via voxel sprites; otherwise
     // pick the SHP by the unit's own image ("GI"/"CONS"). An unrecognized
@@ -4697,9 +4707,10 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
         // off (visible_at returns true on empty grids) -> every existing render
         // is pixel-identical. Own units (u.house == 0) are always drawn.
         if (u.house != g_local_house && !world.object_visible_at(g_local_house, u.cell_x, u.cell_y)) return;
-        // W2-AN-13: a submerged enemy sub without our sonar contact is unseen.
-        if (world.unit_hidden_from(g_local_house, u)) return;
-        if(u.alive && u.deployed && g_deploy_anim_until.count(idx) && g_pres_tick<g_deploy_anim_until.at(idx))return;
+        // RocketLocomotion on-launcher phase is not targetable, but must remain
+        // visible so enemy pause/tilt animations render from the launcher.
+        if (world.unit_hidden_from(g_local_house, u) && !ra2engine::World::rocket_on_launcher(u)) return;
+        if(u.alive && g_deploy_anim_until.count(idx) && g_pres_tick<g_deploy_anim_until.at(idx))return;
         if (u.ia.vanish) return;   // W3-B: a death anim replaced the body
         if (u.die_time >= 0.0 && pres_crushed(idx)) return;   // W7-04-25: crushed -> removed at once
         // W5-PRES R-047 [RE: abilities-w5.md §9]: an enemy viewer sees a still
@@ -4846,8 +4857,16 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
         for (int i : uorder)
             if (!(g_map_dressing && pres_airborne(us[i]))) {
                 const auto xy=g_unit_motion.position(i,us[i],g_pres_render_fraction);
-                B.push_back({ra2engine::deck_unit_depth(xy[0],xy[1],us[i].cell_x,us[i].cell_y,
-                    pres_on_high_deck(world,us[i]), g_map_dressing ? g_map_dressing->deck_depth(us[i].cell_x,us[i].cell_y) : -1.0),1,i});
+                const double ground=g_unit_motion.ground_level(i,us[i],pres_ground_level(world,us[i]),
+                                                               g_pres_render_fraction);
+                const int render_x=static_cast<int>(std::floor(xy[0]+0.5));
+                const int render_y=static_cast<int>(std::floor(xy[1]+0.5));
+                const bool interpolated_deck=g_map_dressing && g_map_dressing->layer_decks() &&
+                    ra2engine::unit_on_high_bridge_at(world,us[i],xy[0],xy[1]);
+                const double bridge_artwork_depth=g_map_dressing ?
+                    g_map_dressing->deck_depth(render_x,render_y) : -1.0;
+                B.push_back({ra2engine::deck_unit_depth(xy[0],xy[1],render_x,render_y,
+                    interpolated_deck, bridge_artwork_depth),1,i});
             }
         for (auto it = g_slave_miner_pack_fx.begin(); it != g_slave_miner_pack_fx.end();) {
             const SlaveMinerPackFx& fx = it->second;
@@ -5124,11 +5143,14 @@ ra2engine::Camera centered_camera(const MapFile& map, int view_w, int view_h) {
 // Sidebar helpers (defined below, before run_interactive) used by both the
 // screenshot HUD and the interactive loop.
 std::vector<int> sidebar_buildable(const BuildingAssets& ba);
+ra2engine::QueueCat rp_unit_cat(const ra2engine::UnitTypeDef& d);
 void draw_sidebar(SDL_Renderer* ren, ra2engine::TextureCache& tc, const BuildingAssets& ba,
                   const ra2engine::SidebarLayout& lay, const ra2engine::ProductionState& ps,
                   const ra2engine::World& world, int credits_shown, double t_now, int active_tab,
                   const UnitRoster* ur = nullptr, bool unit_factory_alive = true,
-                  int armed_mode = 0, bool powers_in_strip = false);   // 0 none, 1 repair, 2 sell
+                  int armed_mode = 0, bool powers_in_strip = false,
+                  const ra2engine::ProductionQueues* unit_queues = nullptr,
+                  const std::array<bool, ra2engine::kQueueCats>* unit_factories = nullptr);   // 0 none, 1 repair, 2 sell
 
 int run_screenshot(const std::string& out_path) {
     const int W = 1280, H = 720;
@@ -5842,11 +5864,13 @@ void draw_radar_minimap(SDL_Renderer* ren, const ra2engine::SbRect& radar_rect,
 void draw_sidebar(SDL_Renderer* ren, ra2engine::TextureCache& tc, const BuildingAssets& ba,
                   const ra2engine::SidebarLayout& lay, const ra2engine::ProductionState& ps,
                   const ra2engine::World& world, int credits_shown, double t_now, int active_tab,
-                  const UnitRoster* ur, bool unit_factory_alive, int armed_mode, bool powers_in_strip) {
+                  const UnitRoster* ur, bool unit_factory_alive, int armed_mode, bool powers_in_strip,
+                  const ra2engine::ProductionQueues* unit_queues,
+                  const std::array<bool, ra2engine::kQueueCats>* unit_factories) {
     if(lay.scale!=1.0f) {
         float sx=1,sy=1;SDL_RenderGetScale(ren,&sx,&sy);
         SDL_RenderSetScale(ren,sx*lay.scale,sy*lay.scale);
-        draw_sidebar(ren,tc,ba,lay.unscaled(),ps,world,credits_shown,t_now,active_tab,ur,unit_factory_alive,armed_mode,powers_in_strip);
+        draw_sidebar(ren,tc,ba,lay.unscaled(),ps,world,credits_shown,t_now,active_tab,ur,unit_factory_alive,armed_mode,powers_in_strip,unit_queues,unit_factories);
         SDL_RenderSetScale(ren,sx,sy);return;
     }
     // Opaque backdrop behind any gaps (missing optional chrome), then the
@@ -6022,6 +6046,15 @@ void draw_sidebar(SDL_Renderer* ren, ra2engine::TextureCache& tc, const Building
                          c.rect.x, c.rect.y);
         }
         const bool picture = unit_tab ? (type < static_cast<int>(ur->has_cameo.size()) && ur->has_cameo[type]) : ba.art[type].has_cameo;
+        const ra2engine::ProductionState* item_queue = &ps;
+        bool item_factory_alive = unit_factory_alive;
+        if (unit_tab && unit_queues) {
+            const ra2engine::QueueCat cat = rp_unit_cat(ur->defs[type]);
+            item_queue = &unit_queues->state(cat);
+            const int ci = static_cast<int>(cat);
+            if (unit_factories && ci >= 0 && ci < ra2engine::kQueueCats)
+                item_factory_alive = (*unit_factories)[static_cast<std::size_t>(ci)];
+        }
         if (!picture) {
             const SDL_Rect missing_rect{c.rect.x,c.rect.y,c.rect.w,c.rect.h};
             SDL_SetRenderDrawColor(ren,35,43,40,255); SDL_RenderFillRect(ren,&missing_rect);
@@ -6036,8 +6069,8 @@ void draw_sidebar(SDL_Renderer* ren, ra2engine::TextureCache& tc, const Building
         // no gate renders an interactive unit tab (spec §8).
         bool can;
         if (unit_tab)
-            can = ra2engine::can_start_unit(ps, type, ur->defs, world.buildings(), ba.roster, 0,
-                                            ba.groups, unit_factory_alive, &world.units());
+            can = ra2engine::can_start_unit(*item_queue, type, ur->defs, world.buildings(), ba.roster, 0,
+                                            ba.groups, item_factory_alive, &world.units());
         else
             can = ra2engine::can_start(ps, type, ba.roster, world.buildings(), 0, ba.groups,
                                        conyard_alive(world, ba, g_local_house), &world.units());
@@ -6045,10 +6078,10 @@ void draw_sidebar(SDL_Renderer* ren, ra2engine::TextureCache& tc, const Building
         // the item cannot be built; while in production GCLOCK2 frame stage+1
         // TRANSLUCENT (0x404 = 50 %) with no shade under it; a ready item shows
         // only its "Ready" text (draw_queue_badges).
-        if (ps.slot.type == type && ps.slot.ready) {
+        if (item_queue->slot.type == type && item_queue->slot.ready) {
             // Ready: no clock (text drawn by GameScene::draw_queue_badges).
-        } else if (ps.slot.type == type) {
-            int gframe = 1 + ps.slot.stage;
+        } else if (item_queue->slot.type == type) {
+            int gframe = 1 + item_queue->slot.stage;
             if (gframe >= ba.sb_gclock.count()) gframe = ba.sb_gclock.count() - 1;
             blit_shp_alpha(ren, tc, "sb:gclk" + std::to_string(gframe), ba.sb_gclock, gframe, ba.sb_pal,
                            c.rect.x, c.rect.y, 128);
@@ -6773,7 +6806,8 @@ enum ShellAction { ACT_NONE = 0, ACT_GOTO, ACT_SKIRMISH, ACT_QUIT, ACT_LOADGAME 
                    ACT_MOVIES /* W6-06-13: Play Movies (movies_page.inc) */,
                    ACT_ABOUT /* W6-06-16: Options > About (about_page.inc) */,
                    ACT_MP_LAN /* multiplayer: Network -> LAN browser (mp_pages.inc) */,
-                   ACT_MP_ONLINE /* multiplayer: Internet -> own ra2lobbyd server (mp_pages.inc) */ };
+                   ACT_MP_ONLINE /* multiplayer: Internet -> own ra2lobbyd server (mp_pages.inc) */,
+                   ACT_GAMECONTROLS /* shared Game Controls from the main menu */ };
 bool movies_supplied();   // W6-06-13 (movies_page.inc)
 
 // One owner-draw menu button in LOGICAL 640x480 space. layout() builds these;
@@ -7700,6 +7734,7 @@ public:
         }
         if (net_) net_drain_tick_events();   // NET-PLAY: frame-time events leave the World per tick
         ++sim_frame_;   // NET L1: the command clock
+        periodic_autosave();   // W2-AR-09: configurable single-player autosave cadence
         if (net_) net_note_tick(net_t0);   // W9-01-03: PROCESS_TIME sample (no waits)
         }   // G-13 fixed logic tick
         if (net_) {   // NET-PLAY: no catch-up (W9-01-05); chat / away / leaving
@@ -8000,12 +8035,18 @@ public:
             const bool unit_fac_alive =
                 (active_tab_ >= 2) ? !world_.factory_category_lost(rp_ft_of(vis_cat), local_house_)
                                    : true;
+            std::array<bool, ra2engine::kQueueCats> unit_factories{};
+            for (ra2engine::QueueCat cat : {ra2engine::QueueCat::Infantry, ra2engine::QueueCat::Vehicle,
+                                             ra2engine::QueueCat::Naval, ra2engine::QueueCat::Aircraft})
+                unit_factories[static_cast<std::size_t>(cat)] =
+                    !world_.factory_category_lost(rp_ft_of(cat), local_house_);
             const ra2engine::Input::BaseMode bm = input_.base_mode();
             draw_sidebar(ren, tc, ba_, lay_, lq().state(vis_cat), world_,
                          static_cast<int>(std::llround(credits_shown_)), now_ / 1000.0,
                          active_tab_, &ur_, unit_fac_alive,
                          bm == ra2engine::Input::BaseMode::Repair ? 1
-                                     : bm == ra2engine::Input::BaseMode::Sell ? 2 : 0, rp_on_);
+                                     : bm == ra2engine::Input::BaseMode::Sell ? 2 : 0, rp_on_,
+                         rp_on_ ? &lq() : nullptr, rp_on_ ? &unit_factories : nullptr);
         }
         draw_queue_badges(ren, tc);    // G-07 / W2-UI-03/04
         draw_tooltip(ren, tc);         // W2-UI-07
@@ -8220,6 +8261,11 @@ private:
                  ra2engine::save::from_bytes(*hs, h) && campaign_->restore(h);
         }
         if (ok) {
+            // Type flags are rules-derived, not session state. Rebind them from
+            // this install's resolved roster after loading the serialized World.
+            // This keeps hardcoded YAPOWR occupancy and rules-driven Grinding
+            // behavior available after resume without changing the save layout.
+            world_.refresh_building_types(ba_.roster);
             w2_rebind_sw_payloads();
             // G-87: the saved World carries the neutral structures; re-block the
             // dressing's cells (passability is rebuilt from the map on load).
@@ -9706,16 +9752,17 @@ private:
                 // 0xD7) are greyed: no remappable command table / no netcode
                 // yet (P8 deferrals). "Main Menu" (0x686) commits + saves.
                 return {
-                    btn(0, "Keyboard",  true,  ACT_KEYBOARD, PAGE_OPTIONS),
-                    btn(1, "Network",   false, ACT_GOTO, PAGE_MAIN),
+                    btn(0, "Game Controls", true, ACT_GAMECONTROLS, PAGE_OPTIONS),
+                    btn(1, "Keyboard",  true,  ACT_KEYBOARD, PAGE_OPTIONS),
+                    btn(2, "Network",   false, ACT_GOTO, PAGE_MAIN),
 #ifdef __ANDROID__
                     // W6-06-05 [engine affordance]: add or replace game files
                     // at any time (the launcher only offers it when a
                     // required file is missing).
-                    btn(2, "Game Files", true, ACT_IMPORT, PAGE_OPTIONS),
+                    btn(3, "Game Files", true, ACT_IMPORT, PAGE_OPTIONS),
 #endif
                     // W6-06-16: version, licence, third-party notices, disclaimer.
-                    btn(3, "About",     true,  ACT_ABOUT, PAGE_OPTIONS),
+                    btn(4, "About",     true,  ACT_ABOUT, PAGE_OPTIONS),
                     btn(5, "Main Menu", true,  ACT_GOTO, PAGE_MAIN),
                 };
             case PAGE_CAMPAIGN: // dialog 0x94 (W2-UI-18): Load row 0, Back row 5; the
@@ -9828,6 +9875,7 @@ private:
     bool         down_ = false;        // left button currently held (pressed state)
     SaveLoadDialog sld_;               // P7: "Load Saved Game" (Load mode)
     KeyboardPage kb_;                  // W5-E: Options -> Keyboard (dialog 0xA3)
+    InGameMenu game_controls_;         // shared in-game settings available from the main menu
     std::string  res_label_;           // W5-E: the resolution combobox face after a pick
     GfConfirm gf_confirm_;             // gF G-14: Exit Game confirm (dialog 0x120)
     Scene*       next_ = nullptr;
@@ -10096,6 +10144,7 @@ void MainMenuScene::render(ra2engine::Platform& plat, ra2engine::TextureCache& t
                                 : std::to_string(plat.width()) + " x " + std::to_string(plat.height()) + " x 16";
         draw_options_page(ren, tc, art_, xform(), opt_, audio_live(), res);
     }
+    if (game_controls_.open_) game_controls_.render(ren, tc);
     if (page_ == PAGE_CAMPAIGN) {   // W2-UI-18: FSBKGD wells + list + difficulty
         int lx = 0, ly = 0;
         to_logical(mx_, my_, lx, ly);
@@ -10247,6 +10296,15 @@ void MainMenuScene::handle(const ra2engine::InputEvent& ev) {
         if (gf_confirm_.handle(ev) == 0) quit_ = true;
         return;
     }
+    if (game_controls_.open_) {
+        const InGameMenu::Choice result = game_controls_.handle(ev);
+        if ((result == InGameMenu::Settings || result == InGameMenu::Committed) && g_user_settings) {
+            *g_user_settings = game_controls_.settings();
+            save_user_settings(*g_user_settings);
+        }
+        if (game_controls_.page() == InGameMenu::P_OPTIONS) game_controls_.close();
+        return;
+    }
     // W5-E: the Keyboard page (when open) owns every event.
     if (kb_.open_) {
         kb_.handle(ev);
@@ -10344,6 +10402,7 @@ void MainMenuScene::handle(const ra2engine::InputEvent& ev) {
                 next_ = new AboutScene(rules_, no_audio_, art_);
                 return;
             case ACT_KEYBOARD: kb_.open(); return;   // W5-E [RE: options.md §1/§6 0x5CE -> 0xA3]
+            case ACT_GAMECONTROLS: game_controls_.open(InGameMenu::P_CONTROLS); return;
             case ACT_IMPORT:   // W6-06-05: the launcher's importer; the engine
                                // quits so the next start reads the new files.
                 if (g_user_settings) {

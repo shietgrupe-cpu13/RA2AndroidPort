@@ -45,7 +45,7 @@ struct BldEventState {
     bool door_roof = false;        // ... an aircraft (roof pair)
     long super_start = -1;         // tick of the last SW state change
     int super_previous = 0;       // readiness of this building's own power
-    int super_phase = -1;          // -1 none, 0 opening (ready), 2 closing (fired)
+    int super_phase = -1;          // -1 none, 0 open/ready, 1 open for launch, 2 closing
     BldSlotRun run[PresFx::kBldSlots];
     bool init = false;
     bool init_done = false;        // grand-opening slots started (logging)
@@ -459,12 +459,13 @@ void pres_building_overlay(SDL_Renderer* ren, ra2engine::TextureCache& tc, const
         const auto& ready = a.slot[kBsSuper+2];
         const auto& closing = a.slot[kBsSuper+3];
         const bool charged = ev->super_phase == 0;
-        const auto& transition = charged ? opening : closing;
+        const bool launch_open = ev->super_phase == 1;
+        const auto& transition = (charged || launch_open) ? opening : closing;
         const auto* t = slot_t(transition);
         const int frame = t ? oneshot_frame(*t,ev->super_start,now) : -1;
         if (t && frame >= 0) draw_t(t,frame,transition.x,transition.y);
         else {
-            const auto& stable = charged ? ready : idle;
+            const auto& stable = (charged || launch_open) ? ready : idle;
             if (const auto* loop = slot_t(stable))
                 draw_t(loop, PresFx::loop_frame(*loop,ev->super_start < 0 ? 0 : now-ev->super_start),stable.x,stable.y);
         }

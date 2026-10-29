@@ -53,7 +53,7 @@ static const char* touch_action_label(int id) {
         case TB_GROUP1+3:return "4";case TB_GROUP1+4:return "5";case TB_GROUP1+5:return "6";
         case TB_GROUP1+6:return "7";case TB_GROUP1+7:return "8";case TB_GROUP1+8:return "9";case TB_GROUP1+9:return "0";
         case TB_STOP:return "STOP";case TB_GUARD:return "GUARD";case TB_DEPLOY:return "DEPLOY";case TB_SCATTER:return "SCATTER";
-        case TB_FIRE:return "FIRE";case TB_BOX:return "BOX";case TB_HOME:return "HOME";case TB_NEXT:return "NEXT";
+        case TB_FIRE:return "FORCE";case TB_BOX:return "BOX";case TB_HOME:return "HOME";case TB_NEXT:return "NEXT";
         case TB_PREV:return "PREV";case TB_TYPE:return "TYPE";case TB_EVENT:return "EVENT";
         case TB_FOLLOW:return "FOLLOW";case TB_BRIEF:return "BRIEF";default:return "MORE";
     }
@@ -241,7 +241,7 @@ const std::vector<TouchBtn>& touch_buttons() const {
         int mask=511;
         if(const char* v=std::getenv("RA2_TOUCH_ACTIONS"))mask=std::clamp(std::atoi(v),0,1023);
         const TouchBtn actions[]={{"STOP",TB_STOP},{"GUARD",TB_GUARD},{"DEPLOY",TB_DEPLOY},
-            {"SCATTER",TB_SCATTER},{"FIRE",TB_FIRE},{"ATK MOVE",TB_MOVE},{"+SELECT",TB_ADD},
+            {"SCATTER",TB_SCATTER},{"FORCE",TB_FIRE},{"ATK MOVE",TB_MOVE},{"+SELECT",TB_ADD},
             {"TYPE",TB_TYPE},{"ROUTE Z",TB_ROUTE}};
         std::vector<TouchBtn> out;
         for(int i=0;i<9;++i)if(mask&(1<<i))out.push_back(actions[i]);
@@ -538,7 +538,7 @@ void draw_touch_bar(SDL_Renderer* ren, ra2engine::TextureCache& tc) {
         }
         std::string label = id == TB_DEPLOY ? touch_deploy_label() : bs[static_cast<size_t>(i)].label;
         if (id == TB_TOGGLE && !touch_bar_open_ && armed_mod)   // closed: show what is armed
-            label = touch_add_ ? "+SEL" : touch_fire_ ? "FIRE" : touch_move_ ? "ATK MOVE" : "BOX";
+            label = touch_add_ ? "+SEL" : touch_fire_ ? "FORCE" : touch_move_ ? "ATK MOVE" : "BOX";
         const bool has_icon = !touch_free_layout() && id < TB_PSI && id != TB_BRIEF;
         if (has_icon) draw_touch_icon(ren, id, r, enabled);
         const int scale = label.size() <= 2 ? 2 : 1;

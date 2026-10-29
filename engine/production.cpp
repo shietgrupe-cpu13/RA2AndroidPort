@@ -21,6 +21,7 @@ PowerTotals power_totals(const std::vector<Building>& buildings,
         if (!b.alive || b.house != house || b.state != Building::State::Idle) continue;
         if (b.type < 0 || b.type >= (int)types.size()) continue;
         int pw = types[b.type].power;
+        if (types[b.type].bio_reactor) pw += static_cast<int>(b.occupants.size()) * 100;
         // [RE: BuildingClass::Power_Output FUN_0044E7B0 @0x44E85F-0x44E86A,
         // construction.md §8] a positive PowerBonus is scaled by the health
         // ratio -- ftol(Health / Type.Strength * PowerBonus) -- so a damaged

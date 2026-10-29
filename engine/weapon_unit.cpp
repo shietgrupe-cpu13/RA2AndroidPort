@@ -33,7 +33,11 @@ namespace {
 int unit_weapon_for_unit_base(const Unit& u, const Unit& v) {
     if (deployment_owns_fire(u)) return -1;
     if (u.deploy_fire && u.deployed) {
-        const int slot=u.deploy_fire_slot==1 && u.w2.valid ? 1 : 0;
+        // DeployFire aircraft such as the Siege Chopper use their secondary
+        // (deployed artillery) weapon on the ground. Their primary machine gun
+        // remains available only in flight.
+        const int slot=u.is_aircraft && u.w2.valid ? 1
+            : (u.deploy_fire_slot==1 && u.w2.valid ? 1 : 0);
         return slot_can_target(slot==1?secondary_view(u):primary_view(u),unit_airborne(v),v.armor_ix)?slot:-1;
     }
     // W7-01-06 [RE: InfantryClass::SelectWeapon 0x521610]: an undeployed
@@ -94,7 +98,8 @@ int unit_weapon_for_building(const Unit& u, int armor_ix, bool target_bombed, bo
     int want;
     if (u.w7.t.magnetic) want=u.w2.valid && slot_can_target(secondary_view(u),false,armor_ix) ? 1 : -1;
     else if (u.deploy_fire && u.deployed) {
-        const int slot=u.deploy_fire_slot==1 && u.w2.valid ? 1 : 0;
+        const int slot=u.is_aircraft && u.w2.valid ? 1
+            : (u.deploy_fire_slot==1 && u.w2.valid ? 1 : 0);
         want=slot_can_target(slot==1?secondary_view(u):primary_view(u),false,armor_ix)?slot:-1;
     }
     else if (u.deploy_fire && (u.is_infantry || u.is_aircraft)) want = slot_can_target(primary_view(u), false, armor_ix) ? 0 : -1;   // W7-01-06

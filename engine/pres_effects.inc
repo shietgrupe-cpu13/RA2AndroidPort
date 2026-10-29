@@ -95,6 +95,7 @@ struct FxPtType {        // [Particles] entry (ParticleTypeClass)
     double color_speed = 0.0;
     std::vector<SDL_Color> colors;
     std::string next;
+    double next_dx = 0.0, next_dy = 0.0, next_dz = 0.0;
     int wind = 0;
 };
 
@@ -213,6 +214,23 @@ public:
         systems_.push_back(std::move(s));
         pres_log(frame_, "fx particles " + t->name);
         return systems_.back().id;
+    }
+    // Global/unmanaged particles emitted by AnimType::SpawnsParticle. The
+    // setting names a ParticleType, not a ParticleSystemType; vanilla keeps
+    // these in its hidden GasCloudSys so their own BehavesLike/MaxEC apply.
+    void spawn_unmanaged_particle(const std::string& name, int count, double x, double y, double z) {
+        const int n = std::clamp(count, 0, 512);
+        if (n == 0 || !pt_type(name)) return;
+        Sys s;
+        s.id = ++next_id_;
+        s.t = &unmanaged_particle_owner_;
+        s.x = x; s.y = y; s.z = z;
+        s.dying = true;
+        for (int i = 0; i < n; ++i) {
+            Part p = make_part(name, x, y, z);
+            if (p.t) s.parts.push_back(std::move(p));
+        }
+        if (!s.parts.empty()) systems_.push_back(std::move(s));
     }
     void kill_system(int id) {
         for (Sys& s : systems_)
@@ -845,9 +863,27 @@ private:
                 s.dying = true;   // the owner is gone: no new puffs
             }
         }
-        for (Part& p : s.parts) step_part(w, s, p);
+        std::vector<Part> successors;
+        successors.reserve(std::min<std::size_t>(s.parts.size() * 2, 512));
+        for (Part& p : s.parts) {
+            const bool was_alive = !p.dead;
+            step_part(w, s, p);
+            // Yuri's Revenge NextParticle emits two successors as a particle
+            // expires. Defer insertion until after this loop so vector growth
+            // cannot invalidate the current particle reference.
+            if (was_alive && p.dead && p.t && !p.t->next.empty() && successors.size() < 512) {
+                for (int i = 0; i < 2 && successors.size() < 512; ++i) {
+                    Part q = make_part(p.t->next, p.x + p.t->next_dx,
+                                       p.y + p.t->next_dy, p.z + p.t->next_dz);
+                    if (!q.t) continue;
+                    if (rnd() % 6 != 0) q.trans = std::min(100, p.trans + 25);
+                    successors.push_back(std::move(q));
+                }
+            }
+        }
         s.parts.erase(std::remove_if(s.parts.begin(), s.parts.end(), [](const Part& p) { return p.dead; }),
                       s.parts.end());
+        s.parts.insert(s.parts.end(), successors.begin(), successors.end());
         const FxPsType& t = *s.t;
         if (t.behaves == 3) {   // Spark
             if (s.spark_frames > 0 && !s.dying) {
@@ -1217,6 +1253,12 @@ private:
             t->zvel_range = num(key, "ZVelocityRange", 0);
             t->color_speed = dbl(key, "ColorSpeed", 0.1);
             t->next = rget(key, "NextParticle");
+            const std::vector<std::string> next_offset = split(rget(key, "NextParticleOffset"));
+            if (next_offset.size() >= 3) {
+                t->next_dx = std::atof(next_offset[0].c_str());
+                t->next_dy = std::atof(next_offset[1].c_str());
+                t->next_dz = std::atof(next_offset[2].c_str());
+            }
             t->wind = num(key, "WindEffect", 0);
             // ColorList=(r,g,b),(r,g,b),...
             const std::string cl = rget(key, "ColorList");
@@ -1400,6 +1442,7 @@ private:
     int twinkle_chance_ = 30;
     std::vector<std::string> metallic_, splash_;
     int next_id_ = 0;
+    FxPsType unmanaged_particle_owner_{};
     std::vector<Sys> systems_;
     std::vector<Bouncer> bouncers_;
     std::vector<VoxelDebris> voxels_;

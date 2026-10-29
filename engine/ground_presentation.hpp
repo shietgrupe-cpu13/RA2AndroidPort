@@ -13,6 +13,15 @@ template<class W,class U> bool unit_on_high_bridge(const W& w,const U& u) {
     const auto i=static_cast<std::size_t>(u.cell_y)*w.grid_w()+u.cell_x;
     return i < water.size() && water[i] != 0;
 }
+// The renderer may display a unit one fractional tick behind the simulation
+// cell. Resolve the deck from that displayed position so the deck plane and
+// sprite cannot alternate as cell_x/cell_y advance at the simulation edge.
+template<class W,class U> bool unit_on_high_bridge_at(const W& w,const U& u,double fx,double fy) {
+    if (u.is_naval || (u.is_aircraft && u.altitude > 0.0) || u.cargo_of >= 0) return false;
+    const int x=static_cast<int>(std::floor(fx+0.5));
+    const int y=static_cast<int>(std::floor(fy+0.5));
+    return w.high_bridge_cell(x,y) && !w.high_bridge_destroyed(x,y);
+}
 inline double deck_unit_depth(double fx,double fy,int cx,int cy,bool deck, double artwork_depth = -1.0) {
     return deck ? std::max(std::max(fx+fy,double(cx+cy))+1.001, artwork_depth+0.001) : fx+fy;
 }

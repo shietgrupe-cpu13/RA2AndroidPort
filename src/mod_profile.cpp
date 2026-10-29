@@ -74,8 +74,8 @@ std::shared_ptr<ModProfile> ModProfile::inspect(const std::string& directory) {
             if (!p->files_.emplace(rel,it->path().u8string()).second) issue(true,"ambiguous-name",rel);
             const auto ext=lower(it->path().extension().u8string());
             const auto leaf=lower(it->path().filename().u8string());
-            if ((ext==".dll" || leaf=="syringe.exe") && rel.find('/')==std::string::npos)
-                issue(true,"windows-extension",rel+" is a bundled Windows component; it cannot be loaded by the native port");
+            if (ext==".dll" || ext==".exe" || ext==".bat" || ext==".cmd" || ext==".ps1" || leaf=="syringe.exe")
+                issue(true,"windows-extension",rel+" is a Windows executable or extension; it cannot be loaded by the native port");
         }
         // A manifest is mandatory for activation, but unprepared folders can still be audited.
         auto mf=p->files_.find("mod.ini");

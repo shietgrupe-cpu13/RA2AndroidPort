@@ -192,7 +192,8 @@ bool Settings::operator==(const Settings& o) const {
            auto_scroll == o.auto_scroll && detail_level == o.detail_level &&
            sidebar_cameo_text == o.sidebar_cameo_text &&
            unit_action_lines == o.unit_action_lines && show_hidden == o.show_hidden &&
-           tooltips == o.tooltips && screen_width == o.screen_width &&
+           tooltips == o.tooltips && autosave_enabled == o.autosave_enabled &&
+           autosave_interval_minutes == o.autosave_interval_minutes && screen_width == o.screen_width &&
            screen_height == o.screen_height && stretch_movies == o.stretch_movies &&
            sidebar_scale == o.sidebar_scale && sidebar_cells == o.sidebar_cells &&
            display_override == o.display_override && widescreen == o.widescreen &&
@@ -249,6 +250,12 @@ Settings load_settings(const IniDoc& d) {
     s.unit_action_lines = rd_bool(d, kOpt, "UnitActionLines", s.unit_action_lines);
     s.show_hidden = rd_bool(d, kOpt, "ShowHidden", s.show_hidden);
     s.tooltips = rd_bool(d, kOpt, "ToolTips", s.tooltips);
+    s.autosave_enabled = rd_bool(d, kOpt, "AutoSave", s.autosave_enabled);
+    {
+        const int minutes = rd_int(d, kOpt, "AutoSaveInterval", s.autosave_interval_minutes);
+        static constexpr int intervals[] = {1, 3, 5, 10, 15, 30};
+        for (int value : intervals) if (value == minutes) s.autosave_interval_minutes = value;
+    }
     s.screen_width = rd_int(d, kVid, "ScreenWidth", s.screen_width);
     s.screen_height = rd_int(d, kVid, "ScreenHeight", s.screen_height);
     s.stretch_movies = rd_bool(d, kVid, "StretchMovies", s.stretch_movies);
@@ -283,6 +290,8 @@ void store_settings(const Settings& s, IniDoc& d) {
     d.set(kOpt, "UnitActionLines", ww_format_bool(s.unit_action_lines));
     d.set(kOpt, "ShowHidden", ww_format_bool(s.show_hidden));
     d.set(kOpt, "ToolTips", ww_format_bool(s.tooltips));
+    d.set(kOpt, "AutoSave", ww_format_bool(s.autosave_enabled));
+    d.set(kOpt, "AutoSaveInterval", ww_format_int(s.autosave_interval_minutes));
     d.set(kVid, "ScreenWidth", ww_format_int(s.screen_width));
     d.set(kVid, "ScreenHeight", ww_format_int(s.screen_height));
     d.set(kVid, "StretchMovies", ww_format_bool(s.stretch_movies));

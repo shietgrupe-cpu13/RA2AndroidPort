@@ -1266,6 +1266,16 @@ public:
     void refresh_building_types(const std::vector<BuildingTypeDef>& types) {
         lookup_types_ = types;
         if (!types_.empty()) types_ = types;
+        // Older saves omit these rules-derived flags, including in each AI
+        // roster. Match definitions by ID rather than assuming roster order.
+        for (auto& house : ai_houses_)
+            for (auto& saved : house.cfg.roster)
+                for (const auto& current : types)
+                    if (saved.id == current.id) {
+                        saved.grinding = current.grinding;
+                        saved.bio_reactor = current.bio_reactor;
+                        break;
+                    }
     }
     // Gap owner A (G-27) [RE: economy.md §2]: rulesmd [General] PurifierBonus.
     void set_purifier_bonus(double b) { purifier_bonus_ = b; }
@@ -2150,6 +2160,7 @@ public:
     // SovietDisguise / ThirdDisguise]: the PermaDisguise look per side (SHP
     // image). Set by the host from the rules; defaults are this install's.
     void set_infantry_blink_disguise(int frames) { infantry_blink_disguise_ = frames; }   // W7-03-04
+    void set_unit_soylent(const std::string& rules_id, int value) { unit_soylent_[rules_id] = value; }
     void set_side_disguise(int side, const std::string& image) {
         if (side >= 0 && side < static_cast<int>(side_disguise_.size())) side_disguise_[static_cast<std::size_t>(side)] = image;
     }
@@ -3015,6 +3026,7 @@ private:
     // 3 -> indices 0/1/2 identical). NOT hashed. Sized in ensure_houses_default /
     // grow_house_arrays.
     std::vector<int> blackout_frames_;
+    std::map<std::string, int> unit_soylent_; // rules-derived Grinder refunds
     // Produced-unit veterancy flag [RE: capture.md §B5]. Set by a factory
     // infiltration; consumed by add_combat_unit/launch_unit in Task 6 (units
     // this house produces thereafter spawn at veteran_rank 1). Index 2 inert.

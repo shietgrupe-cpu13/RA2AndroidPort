@@ -287,6 +287,11 @@ bool World::econ_can_build(int house, QueueCat cat, int type) const {
                               !factory_category_lost(r->factory_types[static_cast<int>(cat)], house), &units_);
     }
     if (type < 0 || type >= static_cast<int>(btypes().size())) return false;
+    if ((cat == QueueCat::Structure || cat == QueueCat::Defense) &&
+        at_or<char>(r->water_bound, type, 0)) {
+        const auto& water = grid_for(MovementDomain::Water);
+        if (std::none_of(water.begin(), water.end(), [](std::uint8_t cell) { return cell != 0; })) return false;
+    }
     if (!r->bld_allowed.empty() && !at_or<char>(r->bld_allowed, type, 0)) return false;
     return can_start(probe, type, btypes(), buildings_, house, r->groups, econ_conyard_alive(house), &units_);
 }

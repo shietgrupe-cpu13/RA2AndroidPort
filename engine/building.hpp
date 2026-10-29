@@ -106,6 +106,8 @@ struct BuildingTypeDef {
     // --- G16 world depth (agent G) [RE: docs/re/world-depth.md] ---
     bool can_be_occupied = false;   // CanBeOccupied=     (BuildingType +0x157B)
     bool can_occupy_fire = false;   // CanOccupyFire=     (+0x157C)
+    bool grinding = false;          // Grinding= (Yuri Grinder consumes friendly infantry/vehicles)
+    bool bio_reactor = false;       // Yuri Bio Reactor's hardcoded garrison/power bonus
     int max_occupants = 0;          // MaxNumberOccupants= (+0x1580)
     bool bridge_repair_hut = false; // BridgeRepairHut=   (+0x16B6)
     // W6-03-01 [RE: rulesmd [OverlayTypes] 3=GAWALL / 27=NAWALL -- a placed

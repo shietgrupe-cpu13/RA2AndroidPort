@@ -72,6 +72,7 @@ public class SetupActivity extends Activity {
     private static final int REQ_MOD_TREE = 5;
     private static final int REQ_CAMPAIGN_IMPORT = 3;
     private static final int REQ_CAMPAIGN_EXPORT = 4;
+    private static final int REQ_MOD_ZIP = 6;
     public static final String EXTRA_IMPORT = "org.ra2.engine.IMPORT";
     /** W6-06-05: the launcher shortcut ("Import game files", res/xml/shortcuts.xml). */
     public static final String ACTION_IMPORT = "org.ra2.engine.action.IMPORT";
@@ -404,6 +405,10 @@ public class SetupActivity extends Activity {
         super.onActivityResult(req, res, data);
         if (req==REQ_MOD_TREE) {
             if(res==RESULT_OK && data!=null && data.getData()!=null)ModManager.importFolder(this,data.getData());
+            return;
+        }
+        if (req==REQ_MOD_ZIP) {
+            if(res==RESULT_OK && data!=null && data.getData()!=null)ModManager.importZip(this,data.getData());
             return;
         }
         if (req == REQ_CAMPAIGN_IMPORT) {

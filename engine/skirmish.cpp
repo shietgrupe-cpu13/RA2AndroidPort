@@ -21,6 +21,10 @@ void configure_skirmish_houses(World& world, const SkirmishConfig& cfg) {
         world.set_house(i, World::HouseRec{s.side, s.color_ix, s.country, s.alliance_team, s.combatant});
     }
     world.enable_shroud(cfg.shroud);
+    // Standard skirmish uses both unexplored shroud and dimmed explored fog.
+    // Without FogOfWar, a cell remains fully bright after its scout leaves,
+    // leaving the player with only the solid-black unexplored region.
+    world.set_fog_of_war(true);
     world.enable_ally_reveal(true);                 // rules AllyReveal=yes
     world.enable_victory(true, cfg.short_game);
     for (int i = 0; i < (int)cfg.slots.size(); ++i) {

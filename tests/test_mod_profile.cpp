@@ -27,11 +27,12 @@ std::string mix(const std::string& name,const std::string& content){
 }
 }
 TEST_CASE("mod profiles: loose overrides reach Rules and art lookup; disable restores base") {
-    ModFixture f;f.manifest();f.put("rulesmd.ini","[E1]\nCost=75\nStrength=150\n");f.put("assets/gi.shp","mod-art");
+    ModFixture f;f.manifest();f.put("rulesmd.ini","[E1]\nCost=75\nStrength=150\n[MTNK]\nCost=1200\nStrength=600\nSpeed=8\n");f.put("assets/gi.shp","mod-art");
     auto p=f.inspect();REQUIRE(p->can_activate());CHECK(p->status()=="SUPPORTED");CHECK(p->fingerprint.size()==16);
     std::vector<uint8_t> data;REQUIRE(p->read("RULESMD.INI",data));
-    const auto ini=Ini::parse(bytes(merge_mod_ini(bytes(std::string("[E1]\nCost=100\nStrength=100\nSpeed=4\n")),data)));
+    const auto ini=Ini::parse(bytes(merge_mod_ini(bytes(std::string("[E1]\nCost=100\nStrength=100\nSpeed=4\n[MTNK]\nCost=900\nStrength=400\nSpeed=5\n")),data)));
     const auto rules=Rules::load(ini);CHECK(rules.cost("E1")==75);CHECK(rules.strength("E1")==150);CHECK(rules.speed("E1")==4);
+    CHECK(rules.cost("MTNK")==1200);CHECK(rules.strength("MTNK")==600);CHECK(rules.speed("MTNK")==8);
     f.put("base/ra2.mix",mix("gi.shp","base-art"));
     AssetFS base((f.dir/"base").u8string()+"/",nullptr),modded((f.dir/"base").u8string()+"/",nullptr,p);
     REQUIRE(base.read("gi.shp",data));CHECK(bytes(data)=="base-art");

@@ -37,7 +37,11 @@ inline double pres_unit_key(const ra2engine::World& w, const ra2engine::Unit& u)
 
 // Levels the draw position is raised by (bridge deck).
 inline int pres_unit_lift_levels(const ra2engine::World& w, const ra2engine::Unit& u) {
-    return pres_on_high_deck(w, u) ? kPresBridgeLevels : 0;
+    if (!g_map_dressing || !g_map_dressing->layer_decks()) return 0;
+    const bool on_deck = u.moving()
+        ? ra2engine::unit_on_high_bridge_at(w, u, u.fx, u.fy)
+        : pres_on_high_deck(w, u);
+    return on_deck ? kPresBridgeLevels : 0;
 }
 
 inline double pres_ground_level(const ra2engine::World& w,const ra2engine::Unit& u) {

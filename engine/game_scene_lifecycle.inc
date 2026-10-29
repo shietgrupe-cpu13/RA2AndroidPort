@@ -19,7 +19,12 @@ bool lifecycle_event(const ra2engine::InputEvent& ev) {
         case ra2engine::InputEvent::AppBackground: {
             if (!menu_.open_ && !sld_.is_open() && !gf_abort_.open()) menu_.open();   // pause
             const std::string p = autosave_path();
-            if (!p.empty() && !game_over_for_autosave()) {
+            const bool enabled = !g_user_settings || g_user_settings->autosave_enabled;
+            if (!enabled && !p.empty()) {
+                std::error_code ec;
+                std::filesystem::remove(p, ec);
+                autosaved_ = false;
+            } else if (!p.empty() && !game_over_for_autosave()) {
                 const Uint32 t0 = SDL_GetTicks();
                 const bool ok = save_game(p, "AUTOSAVE");
                 autosaved_ = autosaved_ || ok;
@@ -40,6 +45,26 @@ bool lifecycle_event(const ra2engine::InputEvent& ev) {
         default:
             return false;
     }
+}
+void periodic_autosave() {
+    if (net_ || game_over_for_autosave()) return;
+    const std::string path = autosave_path();
+    if (path.empty()) return;
+    if (g_user_settings && !g_user_settings->autosave_enabled) {
+        if (autosaved_) {
+            std::error_code ec;
+            std::filesystem::remove(path, ec);
+            autosaved_ = false;
+        }
+        return;
+    }
+    const int minutes = g_user_settings ? g_user_settings->autosave_interval_minutes : 5;
+    const std::uint64_t interval = static_cast<std::uint64_t>(std::max(1, minutes)) * 60u * 15u;
+    if (sim_frame_ == 0 || sim_frame_ % interval != 0) return;
+    const bool ok = save_game(path, "AUTOSAVE");
+    autosaved_ = autosaved_ || ok;
+    SDL_Log("[lifecycle] periodic autosave %s frame=%u -> %s", ok ? "ok" : "FAILED",
+            sim_frame_, path.c_str());
 }
 // No autosave once the outcome is decided (the result screen follows).
 bool game_over_for_autosave() const {

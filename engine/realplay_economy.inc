@@ -72,13 +72,13 @@ bool rp_country_allows(const Rules& rules, const std::string& id, const std::str
 // Supported RA2/YR [SuperWeaponTypes] (rules.ini/rulesmd.ini):
 // MultiSpecial, IronCurtainSpecial, LightningStormSpecial, ChronoSphereSpecial,
 // ChronoWarpSpecial, ParaDropSpecial, AmericanParaDropSpecial, and the three
-// implemented Yuri specials. SpyPlane and ForceShield remain unsupported.
+// implemented Yuri specials and ForceShield.
 bool rp_supported_sw_type(const std::string& type_upper) {
     return type_upper == "MULTIMISSILE" || type_upper == "IRONCURTAIN" ||
            type_upper == "LIGHTNINGSTORM" || type_upper == "CHRONOSPHERE" ||
            type_upper == "CHRONOWARP" || type_upper == "PARADROP" || type_upper == "AMERPARADROP" ||
            type_upper == "PSYCHICDOMINATOR" || type_upper == "GENETICCONVERTER" ||
-           type_upper == "PSYCHICREVEAL";
+           type_upper == "PSYCHICREVEAL" || type_upper == "FORCESHIELD";
 }
 
 // The supported SW section a building grants ("" when unsupported).
@@ -88,15 +88,10 @@ std::string rp_building_supported_sw(const Rules& rules, const std::string& id) 
     return rp_supported_sw_type(rp_upper(rules.section_string(sw, "Type", ""))) ? sw : "";
 }
 
-// [SK-27] W2-AN-18: a structure the lobby's Superweapons checkbox removes:
-// it grants a supported superweapon whose [<Special>] DisableableFromShell=yes
-// (Nuke, Iron Curtain, Lightning Storm, Chronosphere). AmerParaDrop
-// (AMRADR) is DisableableFromShell=no; unsupported SW keys (SpyPlane,
-// ForceShield) do not count -- so the radars stay.
+// A structure the skirmish Superweapons checkbox removes: it grants one of
+// the engine's supported superweapon types. Campaign rules remain unaffected.
 bool rp_is_lobby_sw_building(const Rules& rules, const std::string& id) {
-    const std::string sw = rp_building_supported_sw(rules, id);
-    if (sw.empty()) return false;
-    return rp_flag(rules, sw, "DisableableFromShell");
+    return !rp_building_supported_sw(rules, id).empty();
 }
 
 // The human's country: the lobby slot's country when its [Country] Side=
@@ -202,6 +197,8 @@ struct RpSwGrant {
     double recharge_secs = 0.0;
     bool disableable = false;   // DisableableFromShell=yes (the lobby checkbox)
     double radius = 15.0; // Cell radius for area-targeted Yuri powers
+    int effect_duration_frames = 0;  // ForceShieldDuration
+    int blackout_duration_frames = 0; // ForceShieldBlackoutDuration
 };
 
 // Supported SW Type= names -> the engine enum.
@@ -216,6 +213,7 @@ ra2engine::SuperweaponType rp_sw_type_of(const std::string& type_upper) {
     if (type_upper == "AMERPARADROP") return T::AmerParaDrop;
     if (type_upper == "PSYCHICDOMINATOR") return T::PsychicDominator;
     if (type_upper == "GENETICCONVERTER") return T::GeneticConverter;
+    if (type_upper == "FORCESHIELD") return T::ForceShield;
     if (type_upper == "PSYCHICREVEAL") return T::PsychicReveal;
     return T::None;
 }
@@ -243,6 +241,11 @@ std::vector<RpSwGrant> rp_superweapon_table(const BuildingAssets& ba, const Rule
         else if (t[i].type == ra2engine::SuperweaponType::GeneticConverter)
             default_radius = rules.section_double(
                 sw, "Range", rules.section_double("CombatDamage", "GeneticConverterRadius", 5.0));
+        else if (t[i].type == ra2engine::SuperweaponType::ForceShield) {
+            default_radius = rules.general_double("ForceShieldRadius", 4.0);
+            t[i].effect_duration_frames = static_cast<int>(rules.general_double("ForceShieldDuration", 500.0));
+            t[i].blackout_duration_frames = static_cast<int>(rules.general_double("ForceShieldBlackoutDuration", 1000.0));
+        }
         t[i].radius=std::clamp(default_radius,0.0,256.0);
         t[i].is_powered = rp_flag(rules, sw, "IsPowered");
         t[i].recharge_secs = rules.section_double(sw, "RechargeTime", 5.0) * 60.0;
@@ -280,8 +283,12 @@ void rp_sync_superweapons(ra2engine::World& w, const std::vector<RpSwGrant>& tab
                                    g->type == ra2engine::SuperweaponType::PsychicDominator ||
                                    g->type == ra2engine::SuperweaponType::GeneticConverter;
             const double spread = area_yuri ? g->radius : nuke.cell_spread;
-            w.grant_superweapon_type(h, g->type, g->recharge_secs, g->is_powered, nuke.damage,
-                                     spread, nuke.percent_at_max, nuke.verses);
+            const bool force_shield = g->type == ra2engine::SuperweaponType::ForceShield;
+            w.grant_superweapon_type(h, g->type, g->recharge_secs, g->is_powered,
+                                     force_shield ? g->effect_duration_frames : nuke.damage,
+                                     force_shield ? g->radius : spread,
+                                     force_shield ? g->blackout_duration_frames : nuke.percent_at_max,
+                                     nuke.verses);
         }
     }
 }

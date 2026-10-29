@@ -36,6 +36,8 @@ struct FxAnimType {
     int ydraw = 0;
     int detail = 0;            // W5-E DetailLevel= (shown only at that setting or higher)
     bool normal_light = false; // W7-12-33 UseNormalLight= (drawn at full brightness, after the light pass)
+    std::string spawns_particle; // SpawnsParticle= particle type emitted when this anim ends
+    int num_particles = 1;        // NumParticles= particles emitted by the ending anim
     // [RE: presentation.md §5] Rate= stores 900/Rate game frames per anim
     // frame (no Rate -> 1); Start/End (End defaults to the image frames),
     // LoopStart/LoopEnd (LoopEnd defaults to End), LoopCount (0/1 = once,
@@ -105,7 +107,7 @@ struct FxWeapon {
     // W6-04-24 [rules IsRadBeam= (Desolator RadBeamWeapon), IsLine= (Boris's
     // Flare)]: two more beam kinds. [RE-FALLBACK: colours / life -- the rad
     // beam in [Radiation] RadColor, the flare line red, LaserDuration-like life.]
-    bool rad_beam = false, line = false;
+    bool rad_beam = false, mag_beam = false, line = false;
     int laser_frames = 15;
     bool conventional = false;   // W3-FX warhead Conventional= (water -> SplashList)
     // W7-12-30 [RE: TechnoClass::Fire FUN_006fd210 builds the bullet, muzzle
@@ -139,6 +141,8 @@ public:
         bool unit_palette = false;
         bool hold = false;       // W3-B: stays on its last frame (DestroyAnim ruins)
         std::shared_ptr<ra2assets::Palette> own_pal;   // W4: the building's art Palette= (lib)
+        int particle_count_override = -1; // InfDeath=8 always emits exactly one particle
+        std::string own_pal_key; // exact colour content, prepared once for custom ruins
     };
 
     void init(const std::string& dir, const ra2assets::MixFile& ra2, const Ini& rules_ini,
@@ -159,6 +163,9 @@ public:
                 has_pal_ = true;
             }
         } catch (...) {}
+    }
+    void set_particle_spawn_hook(std::function<void(const std::string&, int, double, double, int, double)> hook) {
+        particle_spawn_hook_ = std::move(hook);
     }
 
     // Weapon effects for a unit type (by image), resolved once.
@@ -212,6 +219,7 @@ public:
         fw.disk = yes("DiskLaser");
         fw.laser_house = yes("IsHouseColor");
         fw.rad_beam = yes("IsRadBeam");   // W6-04-24
+        fw.mag_beam = yes("IsMagBeam");
         fw.line = yes("IsLine");
         const std::string ld = rget(w, "LaserDuration");
         if (!ld.empty()) fw.laser_frames = std::max(1, std::atoi(ld.c_str()));
@@ -251,17 +259,19 @@ public:
         long age = 0;      // W3-B: logic ticks
         SDL_Color inner, outer;
         uint32_t seed;
-        int kind = 0;      // 0 laser/line, 1 bolt, 2 rad beam (wave), 3 house laser
+        int kind = 0;      // 0 laser/line, 1 bolt, 2 rad beam, 3 house laser, 4 disk, 5 magnetic wave
         double ox0 = 0;    // screen-x offset of the start (the muzzle FLH)
+        double ox1 = 0;    // screen-x offset of the end when a wave is reversed
         double seg_lep = 20.0;   // W7-12-06 rad beam segment length (leptons)
         double len_lep = 0.0;    // the beam's length in leptons
         bool white_core = true;  // W7-12-31 bolt: one of the 3 arcs in PALETTE[15]
         double disk_x=0,disk_y=0; // fixed nearest-rim beam origin, screen offsets
     };
     // W7-12-06 / W7-12-32 colours, read once at init (Presentation::init).
-    void set_beam_colors(SDL_Color rad, SDL_Color chrono) {
+    void set_beam_colors(SDL_Color rad, SDL_Color chrono, SDL_Color magna = SDL_Color{255, 200, 255, 255}) {
         rad_color_ = rad;
         chrono_color_ = chrono;
+        magna_color_ = magna;
     }
     // W7-12-32 [RE: HouseClass LaserColor 0x50b820 -- c * 240 / |c| per
     // channel, clamped to 255, a channel below 96 becomes 0; c = the house
@@ -276,7 +286,10 @@ public:
         return SDL_Color{ch(c.r), ch(c.g), ch(c.b), 255};
     }
     void add_beam(double x0, double y0, int l0, double lift0, double x1, double y1, int l1, double lift1,
-                  const FxWeapon& fw, SDL_Color house, double ox0 = 0.0) {
+                  const FxWeapon& fw, SDL_Color house, double ox0 = 0.0, bool reverse = false) {
+        if (reverse) {
+            std::swap(x0, x1); std::swap(y0, y1); std::swap(l0, l1); std::swap(lift0, lift1);
+        }
         // W7-12-31 [RE: EBolt 0x4c1d30 / 0x4c2750 -- +0x28 = 0x10000 shifted
         // right once per frame: a bolt lives 17 frames; drawn as 3 lines, two
         // in PALETTE.PAL[IsAlternateColor ? 5 : 10] and one in PALETTE.PAL[15]].
@@ -284,7 +297,8 @@ public:
                SDL_Color{252, 252, 252, 255},
                fw.alt_color ? SDL_Color{252, 252, 84, 255} : SDL_Color{80, 80, 252, 255}, beam_seed_++ * 2654435761u};
         b.kind = fw.bolt ? 1 : 0;
-        b.ox0 = ox0;
+        b.ox0 = reverse ? 0.0 : ox0;
+        b.ox1 = reverse ? ox0 : 0.0;
         b.len_lep = std::hypot(x1 - x0, y1 - y0) * 256.0;
         if (fw.rad_beam) {
             // W7-12-06 [RE: RadBeam 0x6fcae0 / 0x658b50.. -- kind 1 (Temporal
@@ -295,6 +309,12 @@ public:
             b.inner = b.outer;
             b.life = 15;
             b.seg_lep = fw.temporal ? 10.0 : 20.0;
+        } else if (fw.mag_beam) {
+            b.kind = 5;
+            b.outer = magna_color_;
+            b.inner = magna_color_;
+            b.life = 15;
+            b.seg_lep = 10.0;
         } else if (fw.line) {   // W6-04-24 [RE-FALLBACK: a thin red designator line]
             b.outer = SDL_Color{160, 0, 0, 255};
             b.inner = SDL_Color{255, 40, 40, 255};
@@ -368,8 +388,20 @@ public:
                 ay=static_cast<int>(std::lround((x+y)*15-world_for_pal_->cell_level(source.cx,source.cy)*15-30))+cam.y+15;
             }
             pt(us[static_cast<std::size_t>(l.to)], 10.0, bx, by);
-            SDL_SetRenderDrawColor(ren, l.c.r, l.c.g, l.c.b, 255);
-            SDL_RenderDrawLine(ren, ax, ay, bx, by);
+            // Mind-control tethers arc above the battlefield so they remain
+            // distinct from unit movement paths and the isometric grid.
+            const double dx = bx - ax, dy = by - ay;
+            const double span = std::hypot(dx, dy);
+            const double lift = std::clamp(span * 0.16, 18.0, 64.0);
+            SDL_SetRenderDrawColor(ren, l.c.r, l.c.g, l.c.b, 230);
+            int px = ax, py = ay;
+            for (int i = 1; i <= 24; ++i) {
+                const double t = i / 24.0;
+                const int x = static_cast<int>(std::lround(ax + dx * t));
+                const int y = static_cast<int>(std::lround(ay + dy * t - std::sin(3.141592653589793 * t) * lift));
+                SDL_RenderDrawLine(ren, px, py, x, y);
+                px = x; py = y;
+            }
         }
         for(const auto* attachments : {&attached_,&drain_attached_})
         for (const auto& kv : *attachments) {
@@ -397,6 +429,7 @@ public:
             pt(b.x0, b.y0, b.l0, b.lift0, ax, ay);
             ax += static_cast<int>(std::lround(b.ox0));
             pt(b.x1, b.y1, b.l1, b.lift1, bx, by);
+            bx += static_cast<int>(std::lround(b.ox1));
             const double fade = 1.0 - static_cast<double>(b.age) / std::max(1, b.life);
             const Uint8 a = static_cast<Uint8>(std::clamp(fade, 0.0, 1.0) * 255.0);
             if (b.kind == 4) {
@@ -419,7 +452,7 @@ public:
                 SDL_SetRenderDrawColor(ren,b.inner.r,b.inner.g,b.inner.b,a);SDL_RenderDrawLine(ren,sx,sy,bx,by);
                 continue;
             }
-            if (b.kind == 2) {
+            if (b.kind == 2 || b.kind == 5) {
                 // W7-12-06 [RE: RadBeam draw 0x659090 / 0x659500]: n segments of
                 // seg leptons; point k displaced (screen z) by sin(k/n * len*2
                 // degrees) * 40 * frame/Period leptons, colour jittered per
@@ -523,6 +556,7 @@ public:
     }
     SDL_Color rad_color_{0, 255, 0, 255};
     SDL_Color chrono_color_{128, 200, 255, 255};   // W7-12-06 [AudioVisual] ChronoBeamColor
+    SDL_Color magna_color_{255, 200, 255, 255};
     int rad_max_ = 0;
     void set_instant(const std::string& image, bool instant) {
         auto it = weapons_.find(image);
@@ -733,6 +767,9 @@ public:
         if (t.report.empty()) t.report = aget(key, "Report");
         t.detail = std::atoi(aget(key, "DetailLevel").c_str());   // W5-E
         t.normal_light = yes("UseNormalLight");                   // W7-12-33
+        t.spawns_particle = aget(key, "SpawnsParticle");
+        const std::string particle_count = aget(key, "NumParticles");
+        t.num_particles = std::max(1, particle_count.empty() ? 1 : std::atoi(particle_count.c_str()));
         {   // RandomRate=a,b [RE: presentation.md §5]: each 900/x; W5-PRES R-123
             // [RE: reader FUN_00427c80] `if (max < min) min = max` -- a clamp,
             // NOT a swap: every artmd entry (a < b) ends up a fixed 900/b.
@@ -781,11 +818,13 @@ public:
 
     // Spawns `name` at a cell-space point; returns the type (for the Report).
     const FxAnimType* spawn(const std::string& name, double fx, double fy, int level, double lift_px,
-                            double ox_px = 0.0, int house = -1, bool object_layer = false) {
+                            double ox_px = 0.0, int house = -1, bool object_layer = false,
+                            int particle_count_override = -1) {
         const FxAnimType* t = type(name);
         if (!t || t->frames <= 0) return nullptr;
         if (t->detail > g_detail_level) return nullptr;   // W5-E Visual Details
         anims_.push_back(Anim{t, fx, fy, level, lift_px, 0, ox_px, house, instance_delay(*t, fx, fy), object_layer});
+        anims_.back().particle_count_override = particle_count_override;
         if ((t->crater || t->scorch) && g_smudge_hook && lift_px < 30.0) g_smudge_hook(t->crater, fx, fy);
         return t;
     }
@@ -808,7 +847,26 @@ public:
         if (!t || t->frames <= 0) return;
         Anim a{t, fx, fy, level, 0.0, 0, 0.0, house, t->delay};
         a.hold = true;
+        // DestroyAnim is building artwork: use its owner's unit convert,
+        // unless the building supplied a custom palette below. The default
+        // animation palette turns building colour indices into purple noise.
+        a.unit_palette = true;
         a.own_pal = std::move(own_pal);
+        if (a.own_pal) {
+            // Equal palettes can share textures; different palettes must not
+            // reuse the first building's ruin colours. Avoid pointer identities
+            // because allocator reuse can outlive a cached texture.
+            static constexpr char hex[] = "0123456789abcdef";
+            a.own_pal_key = ":own:";
+            a.own_pal_key.reserve(5 + 256 * 8);
+            for (int i = 0; i < 256; ++i) {
+                const auto& c = (*a.own_pal)[i];
+                for (auto value : {c.r, c.g, c.b, c.a}) {
+                    a.own_pal_key += hex[value >> 4];
+                    a.own_pal_key += hex[value & 15];
+                }
+            }
+        }
         anims_.push_back(a);
     }
     void tick() {
@@ -824,6 +882,10 @@ public:
         for (Anim& a : anims_) {
             ++a.age;
             if (a.hold || a.t->frame_at(a.age, a.delay) >= 0) continue;
+            if (particle_spawn_hook_ && !a.t->spawns_particle.empty())
+                particle_spawn_hook_(a.t->spawns_particle,
+                    a.particle_count_override >= 0 ? a.particle_count_override : a.t->num_particles,
+                    a.sx, a.sy, a.level, a.lift_px);
             if (!a.t->next.empty())
                 if (const FxAnimType* n = type(a.t->next))
                     next.push_back(Anim{n, a.sx, a.sy, a.level, a.lift_px, 0, a.ox_px, a.house, instance_delay(*n, a.sx, a.sy), a.object_layer});
@@ -853,7 +915,7 @@ public:
             const int cy = static_cast<int>(std::lround((a.sx + a.sy) * 15.0 - a.level * 15 - a.lift_px)) +
                            cam.y + 15 + a.t->ydraw;
             if (a.own_pal)
-                draw_anim_frame(ren, tc, *a.t, fr, cx, cy, W, H, a.own_pal.get(), ":own");
+                draw_anim_frame(ren, tc, *a.t, fr, cx, cy, W, H, a.own_pal.get(), a.own_pal_key);
             else
                 draw_anim_frame(ren, tc, *a.t, fr, cx, cy, W, H, (a.t->altpal || a.unit_palette) ? alt_palette(a.house) : nullptr,
                                 (a.t->altpal || a.unit_palette) ? ":h" + std::to_string(a.house) : std::string());
@@ -971,6 +1033,7 @@ public:
     }
 
 private:
+    std::function<void(const std::string&, int, double, double, int, double)> particle_spawn_hook_;
     std::string rget(const std::string& s, const std::string& k) const {
         return rules_ ? pres_clean(rules_->get(s, k)) : std::string();
     }

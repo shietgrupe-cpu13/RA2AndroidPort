@@ -13,6 +13,15 @@
 
 using namespace ra2engine;
 
+TEST_CASE("weapon rules: IsMagBeam is read from the weapon section") {
+    const ra2assets::Ini ini = ra2assets::Ini::parse(
+        "[MagneticBeam]\nDamage=5000\nROF=100\nRange=12\nIsMagBeam=yes\n"
+        "[OrdinaryBeam]\nDamage=10\nROF=10\nRange=5\nIsLaser=yes\n");
+    const ra2assets::Rules rules = ra2assets::Rules::load(ini);
+    CHECK(rules.section_flag("MagneticBeam", "IsMagBeam", false));
+    CHECK_FALSE(rules.section_flag("OrdinaryBeam", "IsMagBeam", false));
+}
+
 TEST_CASE("w6units W6-04-01: Burst rearm = Random(3,5) inside a burst, ROF+Random(0,2) after the last shot") {
     // Burst 1 is exactly rearm_frames_for, with the same RNG draw.
     {

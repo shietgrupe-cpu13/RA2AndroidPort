@@ -72,6 +72,8 @@ struct Settings {
     bool unit_action_lines = true; // "Target Lines"
     bool show_hidden = false;
     bool tooltips = true;
+    bool autosave_enabled = true;
+    int autosave_interval_minutes = 5;
     // [Video]
     int  screen_width = -1;
     int  screen_height = -1;

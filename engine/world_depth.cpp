@@ -20,6 +20,11 @@ namespace ra2engine {
 
 namespace {
 constexpr double kFireFlashSecs = 0.4;
+// High-bridge deck cells begin beyond the ramp overlays and can sit several
+// cells from the repair hut. Use the same generous scan for the engineer's
+// Enter eligibility and the actual repair walk, so the hut cannot accept an
+// engineer for a bridge it then fails to find (or reject a bridge it could fix).
+constexpr int kHighBridgeRepairScan = 8;
 int cheb_to_foundation(const Building& b, int x, int y) {
     int best = -1;
     for (const Cellxy& c : foundation_cells(b.cx, b.cy, b.fw, b.fh)) {
@@ -75,7 +80,16 @@ bool World::can_occupy(int ui, int bi) const {
     if (!b.alive || b.state != Building::State::Idle || b.selling) return false;
     if (b.type < 0 || b.type >= static_cast<int>(btypes().size())) return false;
     const BuildingTypeDef& t = btypes()[b.type];
-    if (!t.can_be_occupied) return false;
+    if (!t.can_be_occupied && !t.grinding) return false;
+    if (t.grinding) {
+        // Grinder pads accept the owner's infantry and ground vehicles, without
+        // applying civilian garrison ownership, Occupier, or occupant limits.
+        if (b.house != u.house || u.is_naval) return false;
+        return true;
+    }
+    if (t.bio_reactor)
+        return u.is_infantry && b.house == u.house &&
+               static_cast<int>(b.occupants.size()) < t.max_occupants;
     if (t.tank_bunker) {
         if (!u.is_vehicle || !u.w7.t.bunkerable || b.house != u.house) return false;
         if(b.bunker_exit_left>=0 || std::any_of(units_.begin(),units_.end(),[&](const Unit& v){return v.alive && v.bunker_exit_host==bi;}))return false;
@@ -181,6 +195,17 @@ int World::group_occupy(int issuer, const std::vector<int>& ids, int bi) {
 void World::occupy_now(int ui, int bi) {
     Unit& u = units_[ui];
     Building& b = buildings_[bi];
+    const BuildingTypeDef& type = btypes()[b.type];
+    if (type.grinding) {
+        const auto soylent = unit_soylent_.find(u.tg.t.rules_id);
+        const int unit_soylent = soylent == unit_soylent_.end() ? 0 : soylent->second;
+        const int refund = sell_refund(u.vet.cost, unit_soylent, repair_rules_.refund_percent,
+                                       !ai_enabled(u.house));
+        if (refund > 0) deposit_credits(u.house, refund);
+        consume_unit(ui);
+        diag::note("GRINDER consumed building=%d unit=%d house=%d refund=%d", bi, ui, u.house, refund);
+        return;
+    }
     if(btypes()[b.type].tank_bunker)reset_bunker_drive(u);
     occ_.release_all_of(ui, -1, -1);
     u.path.clear();
@@ -207,7 +232,7 @@ void World::sync_garrison_owner(int bi) {
         const auto& type=btypes()[b.type];
         // Constructed bunkers retain their owner when empty. Only civilian
         // urban-combat garrisons adopt/abandon ownership with their occupants.
-        if (type.tank_bunker || type.id=="NABNKR") return;
+        if (type.tank_bunker || type.bio_reactor || type.id=="NABNKR") return;
     }
     const int neutral = neutral_house();
     if (b.occupants.empty()) {
@@ -929,8 +954,8 @@ bool World::bridge_needs_repair_near(int bi) const {
         }
     }
     if (hbridge_.empty()) return false;
-    for (int y = b.cy - 4; y < b.cy + b.fh + 4; ++y)
-        for (int x = b.cx - 4; x < b.cx + b.fw + 4; ++x)
+    for (int y = b.cy - kHighBridgeRepairScan; y < b.cy + b.fh + kHighBridgeRepairScan; ++y)
+        for (int x = b.cx - kHighBridgeRepairScan; x < b.cx + b.fw + kHighBridgeRepairScan; ++x)
             if (high_bridge_destroyed(x, y)) return true;
     return false;
 }
@@ -939,10 +964,10 @@ int World::repair_high_bridge_near(int bi) {
     if (hbridge_.empty() || bi < 0 || bi >= static_cast<int>(buildings_.size())) return 0;
     const Building& b = buildings_[bi];
     std::vector<Cellxy> stack;
-    // [RE: FUN_00519449 scans +-2 around the hut for the bridge kind; a high
-    // deck starts past the ramp tiles, so the clone looks 4 cells out]
-    for (int y = b.cy - 4; y < b.cy + b.fh + 4; ++y)
-        for (int x = b.cx - 4; x < b.cx + b.fw + 4; ++x)
+    // The deck starts beyond the ramp cells, so scan farther than the hut's
+    // low-bridge overlay check. Keep this radius in sync with the Enter test.
+    for (int y = b.cy - kHighBridgeRepairScan; y < b.cy + b.fh + kHighBridgeRepairScan; ++y)
+        for (int x = b.cx - kHighBridgeRepairScan; x < b.cx + b.fw + kHighBridgeRepairScan; ++x)
             if (high_bridge_destroyed(x, y)) stack.push_back({x, y});
     int n = 0;
     while (!stack.empty()) {
@@ -1117,7 +1142,7 @@ void World::step_depth(double dt) {
         // FUN_004581F0 -> UnloadOccupants FUN_00457DD0]: at health ratio <=
         // ConditionRed civilian occupants walk out alive. The Soviet Battle
         // Bunker retains its defenders; damage alone is not an unload order.
-        if (!b.occupants.empty() && btypes()[b.type].id!="NABNKR" && garrison_red(b)) {
+        if (!b.occupants.empty() && !btypes()[b.type].bio_reactor && btypes()[b.type].id!="NABNKR" && garrison_red(b)) {
             unload_occupants(bi);
             continue;
         }

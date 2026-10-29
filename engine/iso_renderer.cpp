@@ -679,24 +679,19 @@ void draw_path(void* sdl_renderer, const Unit& unit, const Camera& cam, int view
     SDL_BlendMode prev_blend = SDL_BLENDMODE_NONE;
     SDL_GetRenderDrawBlendMode(renderer, &prev_blend);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderDrawColor(renderer, 60, 220, 90, 200);
-    // Poly-line connecting the tile centers of the remaining path cells (from
-    // the cell currently being walked toward, back one so it starts at the
-    // unit) so the ordered route is visible.
-    int prev_x = 0, prev_y = 0;
-    bool have_prev = false;
-    const size_t begin = unit.path_idx > 0 ? unit.path_idx - 1 : 0;
-    for (size_t i = begin; i < unit.path.size(); ++i) {
-        int px, py;
-        tile_center_screen(unit.path[i].x, unit.path[i].y, unit.level, cam, px, py);
-        if (have_prev) SDL_RenderDrawLine(renderer, prev_x, prev_y, px, py);
-        // A small node marker at each cell.
-        SDL_Rect dot{px - 1, py - 1, 3, 3};
-        SDL_RenderFillRect(renderer, &dot);
-        prev_x = px;
-        prev_y = py;
-        have_prev = true;
-    }
+    if (unit.attack_order)
+        SDL_SetRenderDrawColor(renderer, 240, 55, 45, 220);  // attack orders read red at a glance
+    else
+        SDL_SetRenderDrawColor(renderer, 60, 220, 90, 200);
+    // Yuri's Revenge Target Lines show the ordered unit-to-destination
+    // segment, rather than the internal navigation route. Keep the endpoint
+    // at the actual order destination so pathfinding detours don't redraw the
+    // line every time the route is recalculated.
+    int sx, sy, tx, ty;
+    tile_center_screen(unit.fx + unit.sub_x / 256.0, unit.fy + unit.sub_y / 256.0,
+                       unit.level, cam, sx, sy);
+    tile_center_screen(unit.path.back().x, unit.path.back().y, unit.level, cam, tx, ty);
+    SDL_RenderDrawLine(renderer, sx, sy, tx, ty);
     SDL_SetRenderDrawBlendMode(renderer, prev_blend);
 }
 

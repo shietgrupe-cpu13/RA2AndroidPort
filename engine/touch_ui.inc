@@ -158,10 +158,11 @@ void draw_touch_aim(SDL_Renderer* ren) {
         // fire_superweapon_at], the Nuke its [NUKE] CellSpread, the storm its
         // [LightningStormSpecial] CellSpread; a paradrop marks the cell.
         double rad = 0.0;
-        if (t == T::Nuke) rad = world_.sw_cell_spread(0, t);
+        if (t == T::Nuke) rad = world_.sw_cell_spread(g_local_house, t);
         else if (t == T::LightningStorm) rad = world_.sw_params().storm_cell_spread;
-        else if (t == T::PsychicDominator || t == T::GeneticConverter || t == T::PsychicReveal)
-            rad = world_.sw_cell_spread(0, t);
+        else if (t == T::PsychicDominator || t == T::GeneticConverter || t == T::PsychicReveal ||
+                 t == T::ForceShield)
+            rad = world_.sw_cell_spread(g_local_house, t);
         const int sq = (t == T::IronCurtain || t == T::ChronoSphere || t == T::ChronoWarp) ? 1 : 0;
         for (int j = -sq; j <= sq; ++j)
             for (int i = -sq; i <= sq; ++i) diamond(touch_aim_cx_ + i, touch_aim_cy_ + j, 255, 220, 60);

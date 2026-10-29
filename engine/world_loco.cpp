@@ -171,9 +171,12 @@ void build_occupancy_cost(const std::vector<Unit>& units, const Occupancy& occ, 
         if (me_inf && occ.can_enter(x, y, self, my_layer)) continue;
         int c;
         if (me.enter_target == static_cast<int>(o)) c = 1;   // W7-11-12: the transport's own cell is OK
+        // Crushers commit through enemy crushable infantry, including units
+        // already moving; do not make the ore miners route around them.
+        else if (me.crusher && me.is_vehicle && can_crush(me, v) &&
+                 !(world ? world->are_allied(me.house, v.house) : me.house == v.house)) c = 1;
         else if (under_way(v)) c = blockage_mode ? 1000 : moving_block_cost(units, occ, static_cast<int>(o));
         else if (world ? world->are_allied(me.house, v.house) : me.house == v.house) c = 8;   // Temp
-        else if (me.crusher && me.is_vehicle && can_crush(me, v)) c = 1;   // [RE: FUN_004B2550: a Crusher treats Move 4/5 as OK]
         else c = 20;   // Destroyable
         std::uint16_t& cell = out[static_cast<std::size_t>(y) * w + x];
         if (c > cell) {

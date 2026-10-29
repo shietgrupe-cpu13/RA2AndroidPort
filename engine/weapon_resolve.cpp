@@ -278,8 +278,14 @@ void fill_building_weapons(const ra2assets::Rules& rules, const std::string& typ
     d.bunker_rof=rules.section_double("CombatDamage","BunkerROFMultiplier",1.3);
     d.bunker_range=rules.section_double("CombatDamage","BunkerWeaponRangeBonus",2.0);
     d.can_be_occupied = d.tank_bunker || rules.section_flag(type_id, "CanBeOccupied", false);
+    d.grinding = rules.section_flag(type_id, "Grinding", false);
+    d.bio_reactor = type_id == "YAPOWR";
     d.can_occupy_fire = d.tank_bunker || rules.section_flag(type_id, "CanOccupyFire", false);
     d.max_occupants = d.tank_bunker ? 1 : om::ftol(rules.section_double(type_id, "MaxNumberOccupants", 0.0));
+    if (d.bio_reactor) {
+        d.can_be_occupied = true;
+        d.max_occupants = 5;
+    }
     d.bridge_repair_hut = rules.section_flag(type_id, "BridgeRepairHut", false);
     d.w6.gate = rules.section_flag(type_id, "Gate", false);   // R-210
     fill_building_abilities(rules, type_id, d);   // wave-5 (agent C): abil_w5_rules.cpp

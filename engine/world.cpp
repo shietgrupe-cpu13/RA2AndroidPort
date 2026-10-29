@@ -2393,6 +2393,7 @@ void World::step_flight(double dt) {
         //    (Descending) at the state's rate; hold at cruise when Cruising
         //    [RE-GATE APPLIED: aircraft.md §2].
         const bool descending = (u.flight_state == FlightState::Descending);
+        const bool deploy_fire_takeoff = u.deploy_fire && u.flight_state == FlightState::TakingOff;
         // w8fix-layer W8-05-03 [RE: JumpjetLoco integrator FUN_0054CDA0: while
         // Ascending / Hovering / Cruising the height is held over the target
         // floor FUN_0054D4B0 -- BridgeHeight over a deck, the one-cell look-
@@ -2445,16 +2446,21 @@ void World::step_flight(double dt) {
                 } else {
                     const double lift = u.balloon_hover ? u.cruise_altitude / 2.0
                                                         : u.cruise_altitude / 4.0;
-                    if (u.altitude > lift) target_speed = max_lpf;
+                    // A DeployFire jumpjet (Siege Chopper) completes its
+                    // takeoff/undeploy while rising in place; it starts
+                    // translating only after reaching cruise altitude.
+                    if (u.altitude > lift && !deploy_fire_takeoff)
+                        target_speed = max_lpf;
                 }
                 if (target_speed > 0.0 || u.flight_state == FlightState::Cruising)
                     u.body_facing = heading_toward(u.body_facing, gx - u.fx, gy - u.fy,
                                                    turn_lpf * fr, /*omni=*/false);
             }
         }
-        u.an.jj_speed = jumpjet_ramp(u.an.jj_speed, target_speed, max_lpf, u.an.t.jj_accel * fr);
+        u.an.jj_speed = deploy_fire_takeoff ? 0.0
+            : jumpjet_ramp(u.an.jj_speed, target_speed, max_lpf, u.an.t.jj_accel * fr);
         const double step = std::trunc(u.an.jj_speed) * fr;   // ftol(CurSpeed)
-        if (step > 0.0) {
+        if (step > 0.0 && !deploy_fire_takeoff) {
             step_along_facing(u.fx, u.fy, u.body_facing, step);
             u.fx = std::clamp(u.fx, 0.0, static_cast<double>(std::max(0, grid_w_ - 1)));
             u.fy = std::clamp(u.fy, 0.0, static_cast<double>(std::max(0, grid_h_ - 1)));

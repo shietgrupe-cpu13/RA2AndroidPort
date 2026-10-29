@@ -145,9 +145,8 @@ MapFile MapFile::parse(const std::string& ini_text) {
     // [RE: RE-Q5, FUN_004acd80] the pre-fill is the first Clear tile at
     // height [Map] Level= (default 0). ([Map] Fill=Water -> random water
     // tiles is not modelled: no RA2 MP map uses it.)
-    if (!map.cells_.empty())
-        detail::fill_missing_diamond(map.cells_, map.width_, map.height_,
-                                     (uint8_t)std::max(0, ini.get_int("Map", "Level", 0)));
+    detail::fill_missing_diamond(map.cells_, map.width_, map.height_,
+                                 (uint8_t)std::max(0, ini.get_int("Map", "Level", 0)));
     // (x,y) -> first record index, for at(). Cells outside 0..511 keep the
     // linear fallback semantics by disabling the index.
     {
